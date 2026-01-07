@@ -26,6 +26,21 @@ interface Props {
   svcList: SVCConfig[];
 }
 
+// Função utilitária para garantir que tenhamos apenas YYYY-MM-DD
+const normalizeDate = (dateStr: string) => {
+  if (!dateStr) return '';
+  // Se contiver 'T', é um ISO string, pegamos a parte antes do T
+  return dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
+};
+
+// Função para formatar a data para exibição brasileira (DD/MM/AAAA)
+const formatDisplayDate = (dateStr: string) => {
+  const cleanDate = normalizeDate(dateStr);
+  const parts = cleanDate.split('-');
+  if (parts.length !== 3) return dateStr;
+  return `${parts[2]}/${parts[1]}/${parts[0]}`;
+};
+
 export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSyncing, lastSync, svcList }) => {
   const [searchTerm, setSearchTerm] = useState('');
   
@@ -36,9 +51,9 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
   
   const [filterDate, setFilterDate] = useState(getLocalDate());
 
-  // Estatísticas do dia selecionado
+  // Estatísticas do dia selecionado (usando data normalizada)
   const dailyStats = useMemo(() => {
-    const dayReports = submissions.filter(s => s.date === filterDate);
+    const dayReports = submissions.filter(s => normalizeDate(s.date) === filterDate);
     const uniqueSvcsReported = new Set(dayReports.map(s => s.svc));
     
     let running = 0, stopped = 0, spot = 0;
@@ -59,7 +74,7 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
   }, [submissions, filterDate, svcList]);
 
   const handleExportDayCSV = () => {
-    const dayReports = submissions.filter(s => s.date === filterDate);
+    const dayReports = submissions.filter(s => normalizeDate(s.date) === filterDate);
     if (dayReports.length === 0) { alert("Nenhum dado para este dia."); return; }
     
     const headers = ["Data", "SVC", "Total_Rodou", "Total_Parado", "SPOT_Total", "ID_Reporte"].join(",");
@@ -67,7 +82,7 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
       const offers = s.spotOffers as any;
       const spotTotal = Object.keys(offers).reduce((acc, key) => acc + (Number(offers[key]) || 0), 0);
       return [
-        s.date, s.svc, 
+        normalizeDate(s.date), s.svc, 
         s.fleetStatus.filter(v => v.running).length,
         s.fleetStatus.filter(v => !v.running).length,
         spotTotal,
@@ -83,7 +98,7 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
   };
 
   const filteredSubmissions = submissions.filter(s => 
-    s.date === filterDate &&
+    normalizeDate(s.date) === filterDate &&
     (s.svc.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
@@ -158,7 +173,7 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
           {filteredSubmissions.length === 0 ? (
             <div className="bg-white/50 p-10 rounded-[2.5rem] border-2 border-dashed border-slate-200 text-center">
                <Info className="w-8 h-8 text-slate-300 mx-auto mb-3" />
-               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nenhum registro encontrado nesta data</p>
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nenhum registro encontrado em {formatDisplayDate(filterDate)}</p>
             </div>
           ) : (
             filteredSubmissions.map(s => (
@@ -176,7 +191,7 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
              Últimos 10 Envios (Geral)
            </h3>
         </div>
-        <div className="grid gap-3 opacity-80">
+        <div className="grid gap-3 opacity-90">
           {submissions.slice(0, 10).map(s => (
             <ReportCard key={`hist-${s.id}`} report={s} isHistory />
           ))}
@@ -199,7 +214,7 @@ const ReportCard: React.FC<{ report: FormData, isHistory?: boolean }> = ({ repor
         </div>
         <div className="flex items-center gap-2 mt-0.5">
            <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-            {report.date.split('-').reverse().join('/')} • {new Date(report.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+            {formatDisplayDate(report.date)} • {new Date(report.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
            </span>
            <div className="flex items-center gap-1">
              <CloudUpload className="w-3 h-3 text-indigo-300" />
@@ -210,7 +225,7 @@ const ReportCard: React.FC<{ report: FormData, isHistory?: boolean }> = ({ repor
     </div>
     <div className="flex items-center gap-3">
       {report.fleetStatus.some(v => !v.running) && (
-        <div className="bg-rose-50 text-rose-500 p-2 rounded-xl">
+        <div className="bg-rose-50 text-rose-500 p-2 rounded-xl border border-rose-100">
           <AlertCircle className="w-4 h-4" />
         </div>
       )}

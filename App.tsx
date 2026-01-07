@@ -43,8 +43,11 @@ const App: React.FC = () => {
 
   const mergeSubmissions = (local: FormData[], remote: FormData[]) => {
     const map = new Map<string, FormData>();
-    // Remotos são a base
-    remote.forEach(s => map.set(s.id, s));
+    // Remotos são a base - Normalizamos a data ao entrar
+    remote.forEach(s => {
+      const cleanDate = s.date.includes('T') ? s.date.split('T')[0] : s.date;
+      map.set(s.id, { ...s, date: cleanDate });
+    });
     // Preserva locais que ainda não estão no remoto
     local.forEach(s => {
       if (!map.has(s.id)) {
