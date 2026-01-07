@@ -82,6 +82,74 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
     (s.svc.toLowerCase().includes(searchTerm.toLowerCase()) || s.id.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  const handleExportFullCSV = () => {
+    const dayReports = submissions.filter(s => normalizeDate(s.date) === filterDate);
+    if (dayReports.length === 0) {
+      alert("Não há dados para exportar nesta data.");
+      return;
+    }
+
+    // Cabeçalhos detalhados
+    const headers = [
+      "ID Registro",
+      "Horario Envio",
+      "Data Operacao",
+      "SVC",
+      "SPOT Bulk Van",
+      "SPOT Bulk Vuc",
+      "SPOT Utilitarios",
+      "SPOT Van",
+      "SPOT Passeio",
+      "SPOT Vuc",
+      "Frota Rodando (Qtd)",
+      "Frota Parada (Qtd)",
+      "Detalhamento Frota Parada (Placa: Motivo)",
+      "Problema Operacional Relatado",
+      "Possui Fotos Problema",
+      "Possui Aceite Semanal"
+    ].join(";");
+
+    const rows = dayReports.map(s => {
+      const spot = s.spotOffers;
+      const stoppedVehicles = s.fleetStatus
+        .filter(v => !v.running)
+        .map(v => `${v.plate}: ${v.justification || 'SEM JUSTIFICATIVA'}`)
+        .join(" | ");
+
+      const row = [
+        s.id,
+        new Date(s.timestamp).toLocaleTimeString(),
+        formatDisplayDate(s.date),
+        s.svc,
+        spot.bulkVan,
+        spot.bulkVuc,
+        spot.utilitarios,
+        spot.van,
+        spot.veiculoPasseio,
+        spot.vuc,
+        s.fleetStatus.filter(v => v.running).length,
+        s.fleetStatus.filter(v => !v.running).length,
+        `"${stoppedVehicles}"`, // Aspas para não quebrar o CSV se houver ponto e vírgula
+        `"${s.problems.description.replace(/"/g, '""')}"`,
+        s.problems.media.length > 0 ? "SIM" : "NAO",
+        s.weeklyAcceptance ? "SIM" : "NAO"
+      ];
+      return row.join(";");
+    });
+
+    const csvContent = "\ufeff" + headers + "\n" + rows.join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement("a");
+    const url = URL.createObjectURL(blob);
+    
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Relatorio_Frota_${filterDate}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="space-y-6 pb-32 animate-in fade-in duration-500">
       {/* Header com Filtros */}
@@ -115,6 +183,13 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
               className="w-full pl-11 pr-4 py-4 bg-indigo-50/50 border-2 border-transparent focus:border-indigo-200 rounded-2xl font-black text-sm outline-none text-indigo-900"
             />
           </div>
+          <button 
+            onClick={handleExportFullCSV}
+            className="p-4 bg-slate-900 text-white rounded-2xl shadow-lg active:scale-95 transition-all flex items-center justify-center"
+            title="Exportar CSV do Dia"
+          >
+            <Download className="w-6 h-6" />
+          </button>
         </div>
       </div>
 
@@ -143,6 +218,7 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
       <div className="space-y-4">
         <div className="flex items-center justify-between px-2">
            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest">Registros de {formatDisplayDate(filterDate)}</h3>
+           <span className="text-[9px] font-bold text-slate-300 uppercase tracking-widest">{filteredSubmissions.length} itens</span>
         </div>
 
         <div className="grid gap-3">
@@ -221,7 +297,6 @@ const ReportListItem: React.FC<{ report: FormData; isHistory?: boolean; onClick:
 };
 
 const ReportDetailsModal: React.FC<{ report: FormData; onClose: () => void }> = ({ report, onClose }) => {
-  // FIX: Type assertion to number[] to fix Operator '+' cannot be applied to types 'unknown' and 'unknown'
   const spotTotal = (Object.values(report.spotOffers) as number[]).reduce((a, b) => a + b, 0);
 
   return (
@@ -283,7 +358,6 @@ const ReportDetailsModal: React.FC<{ report: FormData; onClose: () => void }> = 
             </h3>
             <div className="bg-white rounded-[2rem] border border-slate-100 overflow-hidden shadow-sm">
               {Object.entries(report.spotOffers).map(([key, val]) => (
-                // FIX: Type assertion to number for comparison to fix Operator '>' cannot be applied to types 'unknown' and 'number'
                 (val as number) > 0 && (
                   <div key={key} className="flex justify-between items-center p-4 border-b border-slate-50 last:border-0">
                     <span className="text-[10px] font-black uppercase text-slate-500">{key.replace(/([A-Z])/g, ' $1')}</span>
