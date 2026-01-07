@@ -5,6 +5,7 @@ import { AdminDashboard } from './components/AdminDashboard';
 import { SettingsView } from './components/SettingsView';
 import { FormData, SVCConfig } from './types';
 import { DEFAULT_SVC_LIST } from './constants';
+import { GoogleGenAI } from "@google/genai";
 import { 
   ClipboardList, 
   LayoutDashboard, 
@@ -12,9 +13,9 @@ import {
   UserCircle, 
   Wifi, 
   WifiOff,
-  RefreshCw,
   X,
-  CloudLightning
+  CloudLightning,
+  Sparkles
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -24,10 +25,8 @@ const App: React.FC = () => {
   const [svcList, setSvcList] = useState<SVCConfig[]>([]);
   const [formKey, setFormKey] = useState(0);
   
-  // Link de sincronização usando padrão Vite (import.meta.env)
   const [syncUrl, setSyncUrl] = useState<string>(
-    // Fix: Using type assertion to any for import.meta to avoid property 'env' not found error when Vite client types are not loaded
-    ((import.meta as any).env?.VITE_SYNC_URL as string) || localStorage.getItem('fleet_sync_url') || ''
+    localStorage.getItem('fleet_sync_url') || ''
   );
   
   const [isSyncing, setIsSyncing] = useState(false);
@@ -52,24 +51,22 @@ const App: React.FC = () => {
         localStorage.setItem('fleet_submissions', JSON.stringify(data));
       }
     } catch (e) {
-      console.error("Erro na sincronização:", e);
+      console.warn("Sincronização pendente ou erro de CORS:", e);
     } finally {
       if (!silent) setIsSyncing(false);
     }
   }, [syncUrl]);
 
   useEffect(() => {
+    const savedSubmissions = localStorage.getItem('fleet_submissions');
+    if (savedSubmissions) setSubmissions(JSON.parse(savedSubmissions));
+
     if (syncUrl) {
       fetchCloudData();
-      
-      pollingRef.current = window.setInterval(() => {
-        fetchCloudData(true);
-      }, 30000);
+      pollingRef.current = window.setInterval(() => fetchCloudData(true), 60000);
     }
     
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current);
-    };
+    return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, [syncUrl, fetchCloudData]);
 
   useEffect(() => {
@@ -82,12 +79,14 @@ const App: React.FC = () => {
 
   const handleAdminAuth = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    if (passwordInput === '1234') {
+    if (passwordInput === '1234') { // Senha padrão, altere conforme necessário
       setUserRole('admin');
       localStorage.setItem('user_role', 'admin');
       setActiveTab('admin');
       setShowLoginModal(false);
       setPasswordInput('');
+    } else {
+      alert("Senha incorreta");
     }
   };
 
@@ -106,11 +105,11 @@ const App: React.FC = () => {
           body: JSON.stringify(data)
         });
         
-        setTimeout(() => fetchCloudData(true), 2000);
+        // Pequeno delay para o Google Script processar
+        setTimeout(() => fetchCloudData(true), 3000);
         return true;
       } catch (e) {
         console.error("Erro no envio:", e);
-        alert("Erro ao enviar para nuvem. O registro ficou salvo apenas neste aparelho.");
         return false;
       } finally {
         setIsSyncing(false);
@@ -120,43 +119,37 @@ const App: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex flex-col pb-20 md:pb-0 bg-slate-50 text-slate-900 font-inter">
-      <header className="bg-slate-900 text-white p-4 shadow-2xl sticky top-0 z-[60]">
+    <div className="min-h-screen flex flex-col pb-24 md:pb-0 bg-[#F8FAFC] text-slate-900 font-inter">
+      <header className="bg-slate-900 text-white p-5 shadow-xl sticky top-0 z-[60] rounded-b-[2rem]">
         <div className="container mx-auto flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-xl transition-all ${isSyncing ? 'bg-indigo-500 animate-pulse' : 'bg-white/5 border border-white/10'}`}>
+          <div className="flex items-center gap-4">
+            <div className={`p-2.5 rounded-2xl transition-all ${isSyncing ? 'bg-indigo-500 animate-pulse' : 'bg-white/5 border border-white/10'}`}>
               {syncUrl ? (
-                <div className="relative">
-                  <Wifi className="w-5 h-5 text-emerald-400" />
-                  <div className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-500 rounded-full animate-ping"></div>
-                </div>
+                <Wifi className="w-5 h-5 text-emerald-400" />
               ) : (
                 <WifiOff className="w-5 h-5 text-amber-400" />
               )}
             </div>
             <div>
-              <div className="flex items-center gap-2">
-                <h1 className="text-sm font-black tracking-tight leading-none uppercase">Frota Hub Live</h1>
-                {syncUrl && <CloudLightning className="w-3 h-3 text-indigo-400 animate-pulse" />}
-              </div>
-              <span className="text-[8px] font-bold text-slate-500 uppercase tracking-widest block mt-1">
-                {isSyncing ? 'Atualizando dados...' : lastSync ? `Cloud OK: ${lastSync.toLocaleTimeString()}` : 'Modo Local'}
+              <h1 className="text-base font-black tracking-tight leading-none uppercase">Frota Hub</h1>
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block mt-1">
+                {isSyncing ? 'Sincronizando...' : lastSync ? `Nuvem OK: ${lastSync.toLocaleTimeString()}` : 'Modo Offline'}
               </span>
             </div>
           </div>
           
           <button 
             onClick={() => userRole === 'admin' ? setActiveTab('admin') : setShowLoginModal(true)}
-            className={`flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase transition-all ${
-              userRole === 'admin' ? 'bg-indigo-600 shadow-lg shadow-indigo-900/20' : 'bg-white text-slate-900'
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-2xl text-[10px] font-black uppercase transition-all shadow-lg active:scale-95 ${
+              userRole === 'admin' ? 'bg-indigo-600 text-white shadow-indigo-500/20' : 'bg-white text-slate-900'
             }`}
           >
-            <UserCircle className="w-4 h-4" /> {userRole === 'admin' ? 'PAINEL GESTÃO' : 'ENTRAR'}
+            <UserCircle className="w-4 h-4" /> {userRole === 'admin' ? 'PAINEL' : 'ADMIN'}
           </button>
         </div>
       </header>
 
-      <main className="flex-grow container mx-auto p-4 max-w-4xl">
+      <main className="flex-grow container mx-auto p-4 max-w-4xl animate-in fade-in duration-700">
         {activeTab === 'form' && (
           <FormView 
             key={formKey} 
@@ -181,7 +174,7 @@ const App: React.FC = () => {
               <SettingsView 
                 svcList={svcList} 
                 onUpdate={(l) => { setSvcList(l); localStorage.setItem('fleet_svc_config', JSON.stringify(l)); }} 
-                onClearData={() => { if(confirm('Excluir tudo localmente?')) { setSubmissions([]); localStorage.removeItem('fleet_submissions'); }}}
+                onClearData={() => { if(confirm('Excluir tudo?')) { setSubmissions([]); localStorage.removeItem('fleet_submissions'); }}}
                 syncUrl={syncUrl}
                 onUpdateSyncUrl={(url) => { setSyncUrl(url); localStorage.setItem('fleet_sync_url', url); fetchCloudData(); }}
                 submissions={submissions}
@@ -193,41 +186,41 @@ const App: React.FC = () => {
       </main>
 
       {showLoginModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-md">
-          <div className="bg-white w-full max-w-sm rounded-[2.5rem] shadow-2xl p-10 animate-in zoom-in-95 duration-200">
-            <div className="flex justify-between items-center mb-8">
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/90 backdrop-blur-md">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] shadow-2xl p-10">
+            <div className="flex justify-between items-center mb-10">
               <h2 className="text-xl font-black text-slate-800">Acesso Restrito</h2>
               <button onClick={() => setShowLoginModal(false)}><X className="w-6 h-6 text-slate-300" /></button>
             </div>
-            <form onSubmit={handleAdminAuth} className="space-y-4">
+            <form onSubmit={handleAdminAuth} className="space-y-6">
               <input 
                 type="password"
-                placeholder="Senha de Acesso"
+                placeholder="Senha Administrativa"
                 autoFocus
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
-                className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-2xl text-center text-2xl font-black outline-none transition-all"
+                className="w-full p-6 bg-slate-50 border-2 border-slate-100 focus:border-indigo-500 rounded-3xl text-center text-2xl font-black outline-none transition-all"
               />
-              <button type="submit" className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl shadow-xl shadow-indigo-100 uppercase tracking-widest text-xs">Entrar no Dashboard</button>
+              <button type="submit" className="w-full py-6 bg-slate-900 text-white font-black rounded-3xl shadow-xl uppercase tracking-widest text-xs active:scale-95 transition-transform">Desbloquear Painel</button>
             </form>
           </div>
         </div>
       )}
 
-      <nav className="fixed bottom-4 left-4 right-4 bg-white/90 backdrop-blur-xl border border-slate-100 flex justify-around p-3 z-50 shadow-2xl rounded-[2rem] md:max-w-md md:mx-auto">
-        <button onClick={() => setActiveTab('form')} className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-2xl transition-all ${activeTab === 'form' ? 'bg-slate-100 text-slate-900' : 'text-slate-400'}`}>
+      <nav className="fixed bottom-6 left-6 right-6 bg-white/80 backdrop-blur-2xl border border-white/50 flex justify-around p-3 z-50 shadow-[0_20px_50px_rgba(0,0,0,0.1)] rounded-[2.5rem] md:max-w-md md:mx-auto">
+        <button onClick={() => setActiveTab('form')} className={`flex flex-col items-center gap-1.5 flex-1 py-3 rounded-[1.8rem] transition-all duration-300 ${activeTab === 'form' ? 'bg-slate-900 text-white shadow-xl shadow-slate-200' : 'text-slate-400 hover:bg-slate-50'}`}>
           <ClipboardList className="w-5 h-5" />
-          <span className="text-[8px] font-black uppercase">Reportar</span>
+          <span className="text-[9px] font-black uppercase">Reportar</span>
         </button>
         {userRole === 'admin' && (
           <>
-            <button onClick={() => setActiveTab('admin')} className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-2xl transition-all ${activeTab === 'admin' ? 'bg-slate-100 text-slate-900' : 'text-slate-400'}`}>
+            <button onClick={() => setActiveTab('admin')} className={`flex flex-col items-center gap-1.5 flex-1 py-3 rounded-[1.8rem] transition-all duration-300 ${activeTab === 'admin' ? 'bg-slate-900 text-white shadow-xl shadow-slate-200' : 'text-slate-400 hover:bg-slate-50'}`}>
               <LayoutDashboard className="w-5 h-5" />
-              <span className="text-[8px] font-black uppercase">Dashboard</span>
+              <span className="text-[9px] font-black uppercase">Painel</span>
             </button>
-            <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1 flex-1 py-2 rounded-2xl transition-all ${activeTab === 'settings' ? 'bg-slate-100 text-slate-900' : 'text-slate-400'}`}>
+            <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1.5 flex-1 py-3 rounded-[1.8rem] transition-all duration-300 ${activeTab === 'settings' ? 'bg-slate-900 text-white shadow-xl shadow-slate-200' : 'text-slate-400 hover:bg-slate-50'}`}>
               <Settings className="w-5 h-5" />
-              <span className="text-[8px] font-black uppercase">Ajustes</span>
+              <span className="text-[9px] font-black uppercase">Ajustes</span>
             </button>
           </>
         )}
