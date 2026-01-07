@@ -15,7 +15,9 @@ import {
   Circle,
   FileCheck,
   CloudUpload,
-  CloudCheck
+  CloudCheck,
+  History,
+  Info
 } from 'lucide-react';
 
 interface Props {
@@ -28,7 +30,14 @@ interface Props {
 
 export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSyncing, lastSync, svcList }) => {
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterDate, setFilterDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Data local correta para o filtro inicial
+  const getLocalDate = () => {
+    const d = new Date();
+    return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+  };
+  
+  const [filterDate, setFilterDate] = useState(getLocalDate());
 
   // Estatísticas do dia selecionado
   const dailyStats = useMemo(() => {
@@ -39,7 +48,7 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
     dayReports.forEach(s => {
       running += s.fleetStatus.filter(v => v.running).length;
       stopped += s.fleetStatus.filter(v => !v.running).length;
-      spot += (Object.values(s.spotOffers) as number[]).reduce((a, b) => a + b, 0);
+      spot += (Object.values(s.spotOffers) as number[]).reduce((a, b) => (a as number) + (b as number), 0);
     });
 
     return {
@@ -51,6 +60,11 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
     };
   }, [submissions, filterDate, svcList]);
 
+  // Lista dos 10 reportes mais recentes independente da data filtrada
+  const recentSubmissions = useMemo(() => {
+    return submissions.slice(0, 10);
+  }, [submissions]);
+
   const handleExportDayCSV = () => {
     const dayReports = submissions.filter(s => s.date === filterDate);
     if (dayReports.length === 0) { alert("Nenhum dado para este dia."); return; }
@@ -60,7 +74,7 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
       s.date, s.svc, 
       s.fleetStatus.filter(v => v.running).length,
       s.fleetStatus.filter(v => !v.running).length,
-      (Object.values(s.spotOffers) as number[]).reduce((a, b) => a + b, 0),
+      (Object.values(s.spotOffers) as number[]).reduce((a, b) => (a as number) + (b as number), 0),
       s.id
     ].join(","));
     
@@ -82,11 +96,11 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
       <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-4">
         <div className="flex justify-between items-center">
           <div>
-            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Painel Gestor</h2>
+            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Gestão</h2>
             <div className="flex items-center gap-2 mt-1">
               <Clock className="w-3 h-3 text-slate-400" />
               <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
-                {lastSync ? `Sincronizado: ${lastSync.toLocaleTimeString()}` : 'Offline'}
+                {lastSync ? `Atualizado: ${lastSync.toLocaleTimeString()}` : 'Modo Offline'}
               </span>
             </div>
           </div>
@@ -115,88 +129,74 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
         </div>
       </div>
 
-      {/* Barra de Progresso */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
-        <div className="flex justify-between items-end mb-4">
-          <div>
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest block mb-1">Envios Recebidos</span>
-            <h3 className="text-2xl font-black text-slate-800 leading-none">
-              {dailyStats.count} <span className="text-slate-300">/ {dailyStats.total}</span>
-            </h3>
-          </div>
-          <span className="text-indigo-600 font-black text-lg">{Math.round(dailyStats.percentage)}%</span>
-        </div>
-        <div className="w-full h-4 bg-slate-100 rounded-full overflow-hidden border border-slate-50">
-          <div 
-            className="h-full bg-gradient-to-r from-indigo-500 to-indigo-600 transition-all duration-1000 ease-out shadow-inner"
-            style={{ width: `${dailyStats.percentage}%` }}
-          />
-        </div>
-        <div className="mt-4 flex gap-4 overflow-x-auto pb-2 scrollbar-hide">
-           {svcList.map(s => {
-             const reported = submissions.some(sub => sub.date === filterDate && sub.svc === s.id);
-             return (
-               <div key={s.id} className="flex flex-col items-center gap-1 min-w-[50px]">
-                 <div className={`w-8 h-8 rounded-full flex items-center justify-center border-2 transition-all ${reported ? 'bg-emerald-500 border-emerald-500 text-white shadow-lg shadow-emerald-100' : 'bg-white border-slate-100 text-slate-300'}`}>
-                   {reported ? <CheckCircle className="w-4 h-4" /> : <Circle className="w-4 h-4" />}
-                 </div>
-                 <span className={`text-[8px] font-black uppercase ${reported ? 'text-slate-800' : 'text-slate-300'}`}>{s.name}</span>
-               </div>
-             )
-           })}
-        </div>
-      </div>
-
+      {/* Reportes para a Data Selecionada */}
       <div className="space-y-4">
-        <div className="relative group">
-          <Search className="absolute left-5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-300 group-focus-within:text-indigo-500 transition-colors" />
-          <input 
-            type="text" 
-            placeholder="Buscar SVC..." 
-            className="w-full pl-14 pr-6 py-5 bg-white border border-slate-100 rounded-3xl shadow-sm outline-none focus:border-indigo-500 transition-all font-bold text-sm"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+        <div className="flex items-center justify-between px-2">
+           <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest flex items-center gap-2">
+             Filtrados por Data
+           </h3>
+           <span className="text-[10px] font-bold text-slate-300">{filteredSubmissions.length} itens</span>
         </div>
 
         <div className="grid gap-3">
           {filteredSubmissions.length === 0 ? (
-            <div className="text-center py-20 bg-white rounded-[2rem] border border-dashed border-slate-200">
-              <p className="text-slate-400 font-bold uppercase text-xs">Aguardando envios de {filterDate}</p>
+            <div className="bg-white/50 p-10 rounded-[2.5rem] border-2 border-dashed border-slate-200 text-center">
+               <Info className="w-8 h-8 text-slate-300 mx-auto mb-3" />
+               <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nenhum reporte em {filterDate.split('-').reverse().join('/')}</p>
             </div>
           ) : (
             filteredSubmissions.map(s => (
-              <div key={s.id} className="bg-white p-6 rounded-[2rem] border border-slate-50 shadow-sm flex items-center justify-between group active:scale-[0.98] transition-all">
-                <div className="flex items-center gap-5">
-                  <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center font-black text-slate-400 group-hover:bg-indigo-50 group-hover:text-indigo-600 transition-colors uppercase">
-                    {s.svc.slice(0, 3)}
-                  </div>
-                  <div>
-                    <span className="text-lg font-black text-slate-800 block leading-tight">{s.svc}</span>
-                    <div className="flex items-center gap-2">
-                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                        {new Date(s.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
-                       </span>
-                       <div className="flex gap-1">
-                         {s.weeklyAcceptance && <FileCheck className="w-3 h-3 text-emerald-500" />}
-                         <CloudCheck className="w-3 h-3 text-indigo-400" />
-                       </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4">
-                  {s.fleetStatus.some(v => !v.running) && (
-                    <div className="bg-rose-50 text-rose-500 p-2.5 rounded-xl border border-rose-100">
-                      <AlertCircle className="w-5 h-5" />
-                    </div>
-                  )}
-                  <ChevronRight className="w-5 h-5 text-slate-200" />
-                </div>
-              </div>
+              <ReportCard key={s.id} report={s} />
             ))
           )}
+        </div>
+      </div>
+
+      {/* Histórico Geral (Para garantir que nada "sumiu") */}
+      <div className="space-y-4 mt-10">
+        <div className="flex items-center justify-between px-2">
+           <h3 className="text-xs font-black text-indigo-400 uppercase tracking-widest flex items-center gap-2">
+             <History className="w-3 h-3" /> Últimos 10 Envios (Geral)
+           </h3>
+        </div>
+        <div className="grid gap-3">
+          {recentSubmissions.map(s => (
+            <ReportCard key={s.id} report={s} isHistory />
+          ))}
         </div>
       </div>
     </div>
   );
 };
+
+// Componente Interno para o Card de Reporte
+// Fix: Typing ReportCard as a React.FC ensures that React reserved props like 'key' are handled correctly.
+const ReportCard: React.FC<{ report: FormData, isHistory?: boolean }> = ({ report, isHistory = false }) => (
+  <div className={`bg-white p-5 rounded-[2rem] border border-slate-50 shadow-sm flex items-center justify-between group active:scale-[0.98] transition-all ${isHistory ? 'opacity-80 scale-95' : ''}`}>
+    <div className="flex items-center gap-4">
+      <div className={`w-11 h-11 rounded-2xl flex items-center justify-center font-black transition-colors uppercase text-xs ${isHistory ? 'bg-slate-100 text-slate-400' : 'bg-indigo-50 text-indigo-600'}`}>
+        {report.svc.slice(0, 3)}
+      </div>
+      <div>
+        <div className="flex items-center gap-2">
+          <span className="text-base font-black text-slate-800 block leading-tight">{report.svc}</span>
+          {report.weeklyAcceptance && <FileCheck className="w-3 h-3 text-emerald-500" />}
+        </div>
+        <div className="flex items-center gap-2 mt-0.5">
+           <span className="text-[9px] font-bold text-slate-400 uppercase tracking-widest">
+            {report.date.split('-').reverse().join('/')} • {new Date(report.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+           </span>
+           <CloudCheck className="w-3 h-3 text-indigo-300" />
+        </div>
+      </div>
+    </div>
+    <div className="flex items-center gap-3">
+      {report.fleetStatus.some(v => !v.running) && (
+        <div className="bg-rose-50 text-rose-500 p-2 rounded-xl">
+          <AlertCircle className="w-4 h-4" />
+        </div>
+      )}
+      <ChevronRight className="w-5 h-5 text-slate-200" />
+    </div>
+  </div>
+);

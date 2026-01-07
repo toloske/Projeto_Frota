@@ -16,6 +16,12 @@ import {
   AlertTriangle
 } from 'lucide-react';
 
+// Função auxiliar para data YYYY-MM-DD local
+const getLocalDate = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+};
+
 const App: React.FC = () => {
   const [userRole, setUserRole] = useState<'standard' | 'admin'>('standard');
   const [activeTab, setActiveTab] = useState<'form' | 'admin' | 'settings'>('form');
@@ -35,12 +41,11 @@ const App: React.FC = () => {
   
   const pollingRef = useRef<number | null>(null);
 
-  // Função para unir dados locais e remotos sem perdas
   const mergeSubmissions = (local: FormData[], remote: FormData[]) => {
     const map = new Map<string, FormData>();
-    // Primeiro adiciona os remotos (verdade absoluta da nuvem)
+    // Remotos são a base
     remote.forEach(s => map.set(s.id, s));
-    // Depois adiciona os locais que podem ainda não estar na nuvem
+    // Preserva locais que ainda não estão no remoto
     local.forEach(s => {
       if (!map.has(s.id)) {
         map.set(s.id, s);
@@ -59,11 +64,11 @@ const App: React.FC = () => {
     try {
       const response = await fetch(syncUrl, { 
         method: 'GET',
+        headers: { 'Accept': 'application/json' },
         cache: 'no-store'
       });
       
-      if (!response.ok) throw new Error("Erro na resposta do servidor");
-      
+      if (!response.ok) throw new Error("Servidor offline");
       const remoteData = await response.json();
       
       if (Array.isArray(remoteData)) {
@@ -75,7 +80,7 @@ const App: React.FC = () => {
         setLastSync(new Date());
       }
     } catch (e) {
-      console.warn("Sync Error:", e);
+      console.warn("Falha na sincronia:", e);
       setSyncError(true);
     } finally {
       if (!silent) setIsSyncing(false);
@@ -86,17 +91,15 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('fleet_submissions');
     if (saved) setSubmissions(JSON.parse(saved));
 
+    const savedSvc = localStorage.getItem('fleet_svc_config');
+    setSvcList(savedSvc ? JSON.parse(savedSvc) : DEFAULT_SVC_LIST);
+
     if (syncUrl) {
       fetchCloudData();
-      pollingRef.current = window.setInterval(() => fetchCloudData(true), 30000); // 30s
+      pollingRef.current = window.setInterval(() => fetchCloudData(true), 20000); // 20s
     }
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, [syncUrl, fetchCloudData]);
-
-  useEffect(() => {
-    const savedSvc = localStorage.getItem('fleet_svc_config');
-    setSvcList(savedSvc ? JSON.parse(savedSvc) : DEFAULT_SVC_LIST);
-  }, []);
 
   const handleAdminAuth = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -111,29 +114,28 @@ const App: React.FC = () => {
   };
 
   const handleSaveSubmission = async (data: FormData) => {
-    // Salva localmente IMEDIATAMENTE para evitar perda se a internet falhar
-    const updated = [data, ...submissions];
-    setSubmissions(updated);
-    localStorage.setItem('fleet_submissions', JSON.stringify(updated));
+    // 1. Salva localmente IMEDIATAMENTE
+    setSubmissions(prev => {
+      const updated = [data, ...prev];
+      localStorage.setItem('fleet_submissions', JSON.stringify(updated));
+      return updated;
+    });
 
+    // 2. Tenta enviar para a nuvem
     if (syncUrl) {
       setIsSyncing(true);
       try {
-        // Envio para Google Apps Script
         await fetch(syncUrl, {
           method: 'POST',
-          mode: 'no-cors', // GAS exige no-cors para POST de domínios diferentes
+          mode: 'no-cors', 
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(data)
         });
-        
-        // Aguarda um pouco para o GAS processar e atualiza
-        setTimeout(() => fetchCloudData(true), 3000);
-        return true;
+        // Agenda uma atualização forçada em 5s para confirmar recebimento
+        setTimeout(() => fetchCloudData(true), 5000);
       } catch (e) {
-        console.error("Erro ao enviar:", e);
+        console.error("Erro no envio:", e);
         setSyncError(true);
-        return false;
       } finally {
         setIsSyncing(false);
       }
@@ -146,7 +148,7 @@ const App: React.FC = () => {
       <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-50">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-colors ${syncUrl ? (syncError ? 'bg-rose-500' : 'bg-indigo-600') : 'bg-slate-200'}`}>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${syncUrl ? (syncError ? 'bg-rose-500' : 'bg-indigo-600') : 'bg-slate-200'}`}>
               {syncError ? (
                 <AlertTriangle className="w-5 h-5 text-white" />
               ) : (
@@ -159,11 +161,11 @@ const App: React.FC = () => {
                 {!syncUrl ? (
                   <div className="flex items-center gap-1 text-rose-500">
                     <WifiOff className="w-2.5 h-2.5" />
-                    <span className="text-[8px] font-bold uppercase">Sem Sincronia</span>
+                    <span className="text-[8px] font-bold uppercase">Sem Nuvem</span>
                   </div>
                 ) : (
                   <span className={`text-[8px] font-bold uppercase ${syncError ? 'text-rose-500' : 'text-emerald-500'}`}>
-                    {syncError ? 'Erro de Conexão' : 'Conectado à Central'}
+                    {syncError ? 'Erro de Conexão' : 'Operando Online'}
                   </span>
                 )}
               </div>

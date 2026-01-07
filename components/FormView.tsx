@@ -18,6 +18,12 @@ import {
   FileCheck
 } from 'lucide-react';
 
+// Data YYYY-MM-DD local
+const getLocalDate = () => {
+  const d = new Date();
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().split('T')[0];
+};
+
 interface Props {
   onSave: (data: FormData) => void;
   svcList: SVCConfig[];
@@ -28,7 +34,7 @@ interface Props {
 export const FormView: React.FC<Props> = ({ onSave, svcList, onNewForm, isSyncing }) => {
   const [step, setStep] = useState(1);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(getLocalDate());
   const [svc, setSvc] = useState('');
   
   const [spotOffers, setSpotOffers] = useState({
@@ -86,7 +92,7 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, onNewForm, isSyncin
           <CheckCircle2 className="w-12 h-12 text-white animate-bounce" />
         </div>
         <h2 className="text-3xl font-black text-slate-800 mb-2">Enviado!</h2>
-        <p className="text-slate-500 font-bold mb-10 max-w-xs">Reporte de {svc} sincronizado com sucesso.</p>
+        <p className="text-slate-500 font-bold mb-10 max-w-xs">Reporte de {svc} guardado localmente e sincronizando com a nuvem.</p>
         <button 
           onClick={onNewForm}
           className="w-full max-w-xs py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl flex items-center justify-center gap-3 uppercase tracking-widest text-xs"
@@ -121,7 +127,7 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, onNewForm, isSyncin
           <div className="space-y-6 animate-in fade-in slide-in-from-right-4">
             <h2 className="text-2xl font-black text-slate-800">Identificação</h2>
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
-              <label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Data da Operação (D-1)</label>
+              <label className="text-[10px] font-black text-slate-400 uppercase block mb-2">Data da Operação (Dia Real)</label>
               <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-4 bg-slate-50 rounded-2xl font-black text-lg border-2 border-transparent focus:border-indigo-500 outline-none" />
             </div>
             <div className="bg-white p-6 rounded-3xl shadow-sm border border-slate-100">
@@ -257,7 +263,7 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, onNewForm, isSyncin
             <h2 className="text-2xl font-black text-slate-800 text-center">Revisão Final</h2>
             <div className="bg-emerald-50 p-8 rounded-[3rem] text-center border-2 border-emerald-100">
                <span className="text-[10px] font-black text-emerald-600 uppercase tracking-[0.2em] block mb-2">Resumo Pronto</span>
-               <p className="text-emerald-950 font-bold leading-relaxed">Você está enviando o reporte de <span className="font-black">{svc}</span> referente ao dia <span className="font-black">{date}</span>.</p>
+               <p className="text-emerald-950 font-bold leading-relaxed">Você está enviando o reporte de <span className="font-black">{svc}</span> referente ao dia <span className="font-black">{date.split('-').reverse().join('/')}</span>.</p>
             </div>
             <button onClick={handleSubmit} className="w-full py-8 bg-indigo-600 text-white font-black text-xl rounded-[3rem] shadow-2xl shadow-indigo-200 flex items-center justify-center gap-4 uppercase tracking-[0.1em] active:scale-95 transition-all">
               Finalizar e Sincronizar
