@@ -9,9 +9,6 @@ import {
   ClipboardList, 
   LayoutDashboard, 
   Settings, 
-  Wifi, 
-  WifiOff,
-  X,
   CloudLightning,
   Lock,
   ShieldCheck
@@ -24,7 +21,6 @@ const App: React.FC = () => {
   const [svcList, setSvcList] = useState<SVCConfig[]>([]);
   const [formKey, setFormKey] = useState(0);
   
-  // A URL agora é prioritariamente buscada do ambiente (Vercel) ou do localStorage para o admin
   const [syncUrl, setSyncUrl] = useState<string>(
     ((import.meta as any).env?.VITE_SYNC_URL as string) || localStorage.getItem('fleet_sync_url') || ''
   );
@@ -62,7 +58,7 @@ const App: React.FC = () => {
 
     if (syncUrl) {
       fetchCloudData();
-      pollingRef.current = window.setInterval(() => fetchCloudData(true), 30000);
+      pollingRef.current = window.setInterval(() => fetchCloudData(true), 60000);
     }
     return () => { if (pollingRef.current) clearInterval(pollingRef.current); };
   }, [syncUrl, fetchCloudData]);
@@ -74,7 +70,6 @@ const App: React.FC = () => {
 
   const handleAdminAuth = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    // Senha para acessar os relatórios
     if (passwordInput === 'admin2024') {
       setUserRole('admin');
       setActiveTab('admin');
@@ -102,7 +97,7 @@ const App: React.FC = () => {
         setTimeout(() => fetchCloudData(true), 2000);
         return true;
       } catch (e) {
-        console.error("Erro ao enviar para nuvem:", e);
+        console.error("Erro ao enviar:", e);
         return false;
       } finally {
         setIsSyncing(false);
@@ -122,7 +117,7 @@ const App: React.FC = () => {
             <div>
               <h1 className="text-sm font-black uppercase tracking-tight leading-none">Frota Digital</h1>
               <p className="text-[9px] font-bold text-slate-400 uppercase mt-1">
-                {syncUrl ? 'Conectado ao Painel Gestor' : 'Modo Offline Ativo'}
+                {syncUrl ? 'Conectado à Central' : 'Modo Offline'}
               </p>
             </div>
           </div>
@@ -162,13 +157,14 @@ const App: React.FC = () => {
                 onRefresh={() => fetchCloudData()}
                 isSyncing={isSyncing}
                 lastSync={lastSync}
+                svcList={svcList}
               />
             )}
             {activeTab === 'settings' && (
               <SettingsView 
                 svcList={svcList} 
                 onUpdate={(l) => { setSvcList(l); localStorage.setItem('fleet_svc_config', JSON.stringify(l)); }} 
-                onClearData={() => { if(confirm('Limpar banco de dados local?')) { setSubmissions([]); localStorage.removeItem('fleet_submissions'); }}}
+                onClearData={() => { if(confirm('Resetar banco local?')) { setSubmissions([]); localStorage.removeItem('fleet_submissions'); }}}
                 syncUrl={syncUrl}
                 onUpdateSyncUrl={(url) => { setSyncUrl(url); localStorage.setItem('fleet_sync_url', url); fetchCloudData(); }}
                 submissions={submissions}
@@ -205,14 +201,14 @@ const App: React.FC = () => {
             <form onSubmit={handleAdminAuth} className="space-y-4">
               <input 
                 type="password"
-                placeholder="Digite a senha"
+                placeholder="Senha administrativa"
                 autoFocus
                 value={passwordInput}
                 onChange={(e) => setPasswordInput(e.target.value)}
                 className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none transition-all font-bold text-center"
               />
               <div className="flex gap-2">
-                <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-4 text-slate-400 font-black uppercase text-[10px]">Fechar</button>
+                <button type="button" onClick={() => setShowLoginModal(false)} className="flex-1 py-4 text-slate-400 font-black uppercase text-[10px]">Voltar</button>
                 <button type="submit" className="flex-[2] py-4 bg-indigo-600 text-white font-black rounded-2xl uppercase text-[10px] shadow-lg shadow-indigo-200">Entrar</button>
               </div>
             </form>
