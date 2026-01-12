@@ -6,7 +6,7 @@ import { SVCConfig } from './types';
  * Exemplo: "https://script.google.com/macros/s/AKfycb.../exec"
  * Isso fará com que o celular e o PC se conectem sozinhos.
  */
-export const GLOBAL_SYNC_URL = ""; 
+export const GLOBAL_SYNC_URL = "https://script.google.com/macros/s/AKfycbw93Ar7SLf9NdbWqofjtWJrDL1tOQalV6u-G0EgEZvZhjU2P2TipLwHYKRg-NTupQpi_A/exec"; 
 
 export const VEHICLE_CATEGORIES = [
   'BULK - VAN EQUIPE ÚNICA POOL',
