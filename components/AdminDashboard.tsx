@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { FormData, SVCConfig } from '../types';
+import { GoogleGenAI } from "@google/genai";
 import { 
   Download, 
   ChevronRight,
@@ -13,7 +14,8 @@ import {
   Truck,
   Package,
   AlertTriangle,
-  X
+  X,
+  Sparkles
 } from 'lucide-react';
 
 const normalizeDate = (dateStr: string) => {
@@ -31,6 +33,8 @@ const formatDisplayDate = (dateStr: string) => {
 export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSyncing, lastSync, svcList }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedReport, setSelectedReport] = useState<FormData | null>(null);
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [aiAnalysis, setAiAnalysis] = useState<string | null>(null);
   
   const getLocalDate = () => {
     const d = new Date();
@@ -64,6 +68,39 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
     (s.svc.toLowerCase().includes(searchTerm.toLowerCase()))
   );
 
+  // Fix: Added Gemini-powered analysis for operational problems reported in the day
+  const handleAIAnalysis = async () => {
+    const problemsText = filteredSubmissions
+      .map(s => `[${s.svc}]: ${s.problems.description}`)
+      .filter(t => t.length > 15)
+      .join('\n');
+
+    if (!problemsText) {
+      alert("Nenhuma ocorrência detalhada encontrada para análise hoje.");
+      return;
+    }
+
+    setIsAnalyzing(true);
+    setAiAnalysis(null);
+
+    try {
+      const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+      const response = await ai.models.generateContent({
+        model: 'gemini-3-flash-preview',
+        contents: `Analise as seguintes ocorrências de frota logística do dia ${formatDisplayDate(filterDate)} e forneça um resumo executivo dos problemas críticos e sugestões de ações corretivas:\n\n${problemsText}`,
+        config: {
+          systemInstruction: "Você é um consultor especialista em logística e gestão de frotas. Seja analítico, conciso e use português do Brasil (PT-BR).",
+        }
+      });
+      setAiAnalysis(response.text);
+    } catch (err) {
+      console.error("AI analysis failed:", err);
+      alert("Erro ao realizar análise inteligente. Verifique sua conexão.");
+    } finally {
+      setIsAnalyzing(false);
+    }
+  };
+
   const handleExportFullCSV = () => {
     const dayReports = submissions.filter(s => normalizeDate(s.date) === filterDate);
     if (dayReports.length === 0) { alert("Sem dados nesta data."); return; }
@@ -88,9 +125,20 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
               {lastSync ? `Atualizado: ${lastSync.toLocaleTimeString()}` : 'Sem conexão'}
             </div>
           </div>
-          <button onClick={onRefresh} className={`p-4 bg-indigo-50 text-indigo-600 rounded-2xl active:scale-90 transition-all ${isSyncing ? 'animate-spin' : ''}`} disabled={isSyncing}>
-            <RefreshCw className="w-5 h-5" />
-          </button>
+          <div className="flex gap-2">
+            {/* Added trigger for AI insights analysis */}
+            <button 
+              onClick={handleAIAnalysis} 
+              disabled={isAnalyzing || filteredSubmissions.length === 0}
+              className={`p-4 rounded-2xl flex items-center justify-center transition-all ${isAnalyzing ? 'bg-indigo-100 text-indigo-400 animate-pulse' : 'bg-indigo-600 text-white active:scale-90 shadow-md'}`}
+              title="Analisar Ocorrências (IA)"
+            >
+              {isAnalyzing ? <RefreshCw className="w-5 h-5 animate-spin" /> : <Sparkles className="w-5 h-5" />}
+            </button>
+            <button onClick={onRefresh} className={`p-4 bg-indigo-50 text-indigo-600 rounded-2xl active:scale-90 transition-all ${isSyncing ? 'animate-spin' : ''}`} disabled={isSyncing}>
+              <RefreshCw className="w-5 h-5" />
+            </button>
+          </div>
         </div>
         <div className="flex gap-2">
           <div className="flex-grow relative">
@@ -100,6 +148,18 @@ export const AdminDashboard: React.FC<Props> = ({ submissions, onRefresh, isSync
           <button onClick={handleExportFullCSV} className="p-4 bg-slate-900 text-white rounded-2xl shadow-lg active:scale-95 transition-all"><Download className="w-6 h-6" /></button>
         </div>
       </div>
+
+      {/* AI Analysis View */}
+      {aiAnalysis && (
+        <div className="bg-gradient-to-br from-indigo-600 to-slate-900 p-6 rounded-[2.5rem] shadow-xl text-white relative animate-in zoom-in-95 duration-300">
+          <button onClick={() => setAiAnalysis(null)} className="absolute top-4 right-4 p-2 bg-white/10 rounded-xl hover:bg-white/20"><X className="w-4 h-4 text-indigo-200" /></button>
+          <div className="flex items-center gap-2 mb-4">
+            <Sparkles className="w-5 h-5 text-indigo-400" />
+            <h3 className="text-sm font-black uppercase tracking-widest text-indigo-200">Insights Estratégicos (IA)</h3>
+          </div>
+          <div className="text-xs font-medium leading-relaxed whitespace-pre-wrap opacity-90">{aiAnalysis}</div>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3">
         <div className="bg-white p-5 rounded-3xl border border-slate-100 shadow-sm">

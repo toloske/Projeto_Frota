@@ -1,5 +1,4 @@
-
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { VEHICLE_CATEGORIES, STOPPED_JUSTIFICATIONS } from '../constants';
 import { FormData, VehicleStatus, SVCConfig } from '../types';
 import { 
@@ -14,7 +13,8 @@ import {
   Upload,
   Info,
   Database,
-  Cloud
+  Cloud,
+  Layers
 } from 'lucide-react';
 
 const getLocalDate = () => {
@@ -106,6 +106,15 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNew
     setIsSubmitted(true);
   };
 
+  // Agrupamento da frota por modal (categoria)
+  const groupedFleet = useMemo(() => {
+    return fleetStatus.reduce((acc, v) => {
+      if (!acc[v.category]) acc[v.category] = [];
+      acc[v.category].push(v);
+      return acc;
+    }, {} as Record<string, VehicleStatus[]>);
+  }, [fleetStatus]);
+
   if (isSubmitted) {
     return (
       <div className="flex flex-col items-center justify-center py-20 text-center px-6">
@@ -188,31 +197,54 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNew
         )}
 
         {step === 3 && (
-          <div className="space-y-4">
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Status da Frota</h2>
-            <div className="space-y-3">
-              {fleetStatus.map(v => (
-                <div key={v.plate} className={`p-5 rounded-3xl border-2 transition-all ${!v.running ? 'bg-rose-50 border-rose-500' : 'bg-white border-slate-50'}`}>
-                  <div className="flex justify-between items-center">
-                    <div>
-                      <span className="font-black text-lg text-slate-800 uppercase block">{v.plate}</span>
-                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest">{v.category}</span>
-                    </div>
-                    <button onClick={() => setFleetStatus(prev => prev.map(p => p.plate === v.plate ? {...p, running: !p.running} : p))} 
-                      className={`px-4 py-3 rounded-xl font-black text-[10px] uppercase ${v.running ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-600 text-white'}`}>
-                      {v.running ? 'Rodou' : 'Parado'}
-                    </button>
+          <div className="space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex items-center justify-between">
+              <h2 className="text-2xl font-black text-slate-800 uppercase tracking-tight">Status da Frota</h2>
+              <div className="bg-indigo-50 px-3 py-1 rounded-full flex items-center gap-1">
+                <Layers className="w-3 h-3 text-indigo-600" />
+                <span className="text-[8px] font-black text-indigo-600 uppercase">{Object.keys(groupedFleet).length} Modais</span>
+              </div>
+            </div>
+            
+            <div className="space-y-10">
+              {/* Fix: Explicitly cast Object.entries to solve 'unknown' type inference on 'vehicles' property */}
+              {(Object.entries(groupedFleet) as [string, VehicleStatus[]][]).map(([category, vehicles]) => (
+                <div key={category} className="space-y-4">
+                  <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-2">
+                    <div className="w-1.5 h-6 bg-indigo-600 rounded-full"></div>
+                    <h3 className="text-xs font-black text-slate-500 uppercase tracking-widest">{category}</h3>
+                    <span className="text-[9px] font-bold text-slate-300 ml-auto bg-slate-50 px-2 py-0.5 rounded-lg">{vehicles.length} veículos</span>
                   </div>
-                  {!v.running && (
-                    <div className="mt-4 grid grid-cols-2 gap-2">
-                      {STOPPED_JUSTIFICATIONS.map(j => (
-                        <button key={j} onClick={() => setFleetStatus(prev => prev.map(p => p.plate === v.plate ? {...p, justification: j} : p))}
-                          className={`p-3 rounded-xl text-[9px] font-black uppercase border-2 ${v.justification === j ? 'bg-rose-600 text-white border-rose-600' : 'bg-white text-slate-400 border-slate-100'}`}>
-                          {j}
-                        </button>
-                      ))}
-                    </div>
-                  )}
+                  
+                  <div className="grid gap-4">
+                    {vehicles.map(v => (
+                      <div key={v.plate} className={`p-5 rounded-3xl border-2 transition-all ${!v.running ? 'bg-rose-50 border-rose-500' : 'bg-white border-slate-50 shadow-sm'}`}>
+                        <div className="flex justify-between items-center">
+                          <div>
+                            <span className="font-black text-lg text-slate-800 uppercase block leading-none">{v.plate}</span>
+                            <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1 block">ID: {v.plate.slice(-4)}</span>
+                          </div>
+                          <button onClick={() => setFleetStatus(prev => prev.map(p => p.plate === v.plate ? {...p, running: !p.running} : p))} 
+                            className={`px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-sm transition-transform active:scale-90 ${v.running ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-600 text-white'}`}>
+                            {v.running ? 'Rodou' : 'Parado'}
+                          </button>
+                        </div>
+                        {!v.running && (
+                          <div className="mt-5 space-y-3">
+                            <span className="text-[9px] font-black text-rose-400 uppercase block text-center tracking-widest">Justificativa de Ausência</span>
+                            <div className="grid grid-cols-2 gap-2">
+                              {STOPPED_JUSTIFICATIONS.map(j => (
+                                <button key={j} onClick={() => setFleetStatus(prev => prev.map(p => p.plate === v.plate ? {...p, justification: j} : p))}
+                                  className={`p-3 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${v.justification === j ? 'bg-rose-600 text-white border-rose-600 shadow-md scale-[1.02]' : 'bg-white text-slate-400 border-slate-100'}`}>
+                                  {j}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               ))}
             </div>
