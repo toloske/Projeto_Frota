@@ -1,8 +1,8 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { VEHICLE_CATEGORIES, STOPPED_JUSTIFICATIONS } from '../constants';
 import { FormData, VehicleStatus, SVCConfig } from '../types';
 import { 
-  MapPin, 
   Truck, 
   CheckCircle2, 
   ChevronRight, 
@@ -14,7 +14,8 @@ import {
   Info,
   Database,
   Cloud,
-  Layers
+  Layers,
+  LayoutGrid
 } from 'lucide-react';
 
 const getLocalDate = () => {
@@ -33,7 +34,6 @@ interface Props {
 
 export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNewForm, isSyncing, onManualSync }) => {
   const [step, setStep] = useState(1);
-  const [isSubmitted, setIsSubmitted] = useState(false);
   const [isProcessingImage, setIsProcessingImage] = useState(false);
   const [date, setDate] = useState(getLocalDate());
   const [svc, setSvc] = useState('');
@@ -93,40 +93,36 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNew
     } catch (e) { alert("Erro ao ler imagem."); } finally { setIsProcessingImage(false); }
   };
 
-  const handleSubmit = (e: React.MouseEvent) => {
+  const handleSubmit = async (e: React.MouseEvent) => {
     e.preventDefault();
     if (!svc) { alert("Selecione um SVC."); return; }
+    
     const finalData: FormData = {
       id: `REP-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`.toUpperCase(),
       timestamp: new Date().toISOString(),
       date, svc, spotOffers, fleetStatus, baseCapacity, problems, weeklyAcceptance,
       acceptances: []
     };
-    onSave(finalData);
-    setIsSubmitted(true);
+    
+    try {
+      await onSave(finalData);
+      alert("Relatório enviado com sucesso!");
+      // Reset total para a primeira página
+      onNewForm();
+    } catch (err) {
+      alert("Erro ao salvar. Verifique sua conexão.");
+    }
   };
 
-  // Agrupamento da frota por modal (categoria)
   const groupedFleet = useMemo(() => {
-    return fleetStatus.reduce((acc, v) => {
-      if (!acc[v.category]) acc[v.category] = [];
-      acc[v.category].push(v);
-      return acc;
-    }, {} as Record<string, VehicleStatus[]>);
+    const groups: Record<string, VehicleStatus[]> = {};
+    fleetStatus.forEach(v => {
+      const cat = v.category || 'Outros';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(v);
+    });
+    return groups;
   }, [fleetStatus]);
-
-  if (isSubmitted) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center px-6">
-        <div className="w-20 h-20 bg-emerald-500 rounded-full flex items-center justify-center mb-6 shadow-xl">
-          <CheckCircle2 className="w-10 h-10 text-white" />
-        </div>
-        <h2 className="text-2xl font-black text-slate-800 mb-2 uppercase">Enviado com Sucesso</h2>
-        <p className="text-slate-500 font-bold mb-10 text-sm">Obrigado pelo seu reporte diário.</p>
-        <button onClick={onNewForm} className="w-full py-5 bg-indigo-600 text-white font-black rounded-3xl shadow-xl uppercase text-xs">Novo Reporte</button>
-      </div>
-    );
-  }
 
   return (
     <div className="pb-10 pt-4">
@@ -207,7 +203,6 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNew
             </div>
             
             <div className="space-y-10">
-              {/* Fix: Explicitly cast Object.entries to solve 'unknown' type inference on 'vehicles' property */}
               {(Object.entries(groupedFleet) as [string, VehicleStatus[]][]).map(([category, vehicles]) => (
                 <div key={category} className="space-y-4">
                   <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-2">

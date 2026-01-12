@@ -1,7 +1,6 @@
 
 import { SVCConfig } from './types';
 
-// Na Vercel, você deve configurar VITE_GLOBAL_SYNC_URL nas Environment Variables
 export const GLOBAL_SYNC_URL = (import.meta as any).env?.VITE_GLOBAL_SYNC_URL || ""; 
 
 export const VEHICLE_CATEGORIES = [
@@ -14,7 +13,11 @@ export const VEHICLE_CATEGORIES = [
   'VUC RENTAL TKS',
   'LARGE VAN ELÉTRICA - EQUIPE ÚNICA',
   'LARGE VAN ELETRICA J750',
-  'FROTA FIXA LARGE VAN FORD'
+  'FROTA FIXA LARGE VAN FORD',
+  'UTILITÁRIO',
+  'VAN',
+  'VUC',
+  'Veículo Operacional'
 ];
 
 export const STOPPED_JUSTIFICATIONS = [
@@ -25,7 +28,6 @@ export const STOPPED_JUSTIFICATIONS = [
   'OUTROS'
 ];
 
-// Mapeamento de Placa para Modal específico fornecido pelo usuário
 const PLATE_MODAL_MAP: Record<string, string> = {
   "JCI8F63": "VUC DEDICADO COM AJUDANTE", "JCI8F68": "VUC DEDICADO COM AJUDANTE", "JCI8F69": "VUC DEDICADO COM AJUDANTE",
   "JCI8F70": "VUC DEDICADO COM AJUDANTE", "JCI8F72": "VUC DEDICADO COM AJUDANTE", "JCI8F74": "VUC DEDICADO COM AJUDANTE",
@@ -416,7 +418,6 @@ export const parseSvcData = (input: string): SVCConfig[] => {
       const svc = parts[0];
       const plate = parts[1];
       const vehicles = svcMap.get(svc) || [];
-      // Usa o modal mapeado ou fallback para categoria genérica
       const category = PLATE_MODAL_MAP[plate] || 'Veículo Operacional';
       vehicles.push({ plate, category });
       svcMap.set(svc, vehicles);
