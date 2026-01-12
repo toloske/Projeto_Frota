@@ -2,25 +2,15 @@
 import React, { useState } from 'react';
 import { SVCConfig, FormData } from '../types';
 import { 
-  Cloud, 
-  Database, 
-  Download, 
   Trash2, 
-  Smartphone,
-  CheckCircle,
-  Share2,
-  MessageCircle,
-  Link as LinkIcon,
-  Truck,
-  PlusCircle,
-  Edit2,
-  X,
-  Save,
-  Plus,
-  CloudUpload,
-  RefreshCw,
-  Globe,
-  Copy
+  CheckCircle, 
+  Truck, 
+  PlusCircle, 
+  Edit2, 
+  X, 
+  CloudUpload, 
+  RefreshCw, 
+  Globe
 } from 'lucide-react';
 
 interface Props {
@@ -34,19 +24,17 @@ interface Props {
 }
 
 export const SettingsView: React.FC<Props> = ({ 
-  svcList, onUpdate, onClearData, syncUrl, onUpdateSyncUrl, submissions, onImportData 
+  svcList, onUpdate, onClearData, syncUrl, onUpdateSyncUrl 
 }) => {
-  const [newUrl, setNewUrl] = useState(syncUrl);
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishStatus, setPublishStatus] = useState<'idle' | 'success' | 'error'>('idle');
   
   const [editingSvc, setEditingSvc] = useState<SVCConfig | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
 
-  // Envia a lista de placas do seu PC para o Google Sheets
   const publishConfigToCloud = async () => {
     if (!syncUrl || !syncUrl.startsWith('http')) {
-      alert("Configure a URL do Script primeiro em 'constants.ts' ou abaixo.");
+      alert("A variável GLOBAL_SYNC_URL no arquivo constants.ts está vazia.");
       return;
     }
 
@@ -54,7 +42,7 @@ export const SettingsView: React.FC<Props> = ({
     setPublishStatus('idle');
 
     try {
-      // Usamos text/plain para enviar a configuração atual para a aba "Configuracao" do Sheets
+      // Importante: Usar no-cors e text/plain para evitar bloqueios de segurança do Google
       await fetch(syncUrl, {
         method: 'POST',
         mode: 'no-cors',
@@ -68,14 +56,11 @@ export const SettingsView: React.FC<Props> = ({
       setPublishStatus('success');
       setTimeout(() => setPublishStatus('idle'), 4000);
     } catch (e) {
+      console.error("Erro ao publicar placas:", e);
       setPublishStatus('error');
     } finally {
       setIsPublishing(false);
     }
-  };
-
-  const handleSaveUrl = () => {
-    onUpdateSyncUrl(newUrl);
   };
 
   const startEditing = (svc: SVCConfig) => {
@@ -102,14 +87,13 @@ export const SettingsView: React.FC<Props> = ({
 
   return (
     <div className="space-y-6 pb-32">
-      {/* Publicar Configuração */}
       <div className="bg-indigo-600 text-white p-8 rounded-[2.5rem] shadow-xl space-y-4">
         <div className="flex items-center gap-3">
           <Globe className="w-6 h-6 text-indigo-200" />
-          <h2 className="text-xl font-black uppercase tracking-tight">Publicar Mudanças</h2>
+          <h2 className="text-xl font-black uppercase tracking-tight">Gestão Global</h2>
         </div>
         <p className="text-[10px] font-bold text-indigo-100 uppercase leading-relaxed">
-          Você adicionou novos SVCs ou placas? Clique abaixo para salvar na nuvem. Todos os celulares da equipe serão atualizados automaticamente ao abrir o app.
+          Após alterar placas no computador, clique abaixo. Todos os celulares da equipe baixarão as novas placas automaticamente ao abrir o app.
         </p>
         <button 
           onClick={publishConfigToCloud}
@@ -119,19 +103,18 @@ export const SettingsView: React.FC<Props> = ({
           {isPublishing ? (
             <RefreshCw className="w-5 h-5 animate-spin" />
           ) : publishStatus === 'success' ? (
-            <><CheckCircle className="w-5 h-5" /> Sincronizado com Celulares!</>
+            <><CheckCircle className="w-5 h-5" /> Placas Enviadas!</>
           ) : (
-            <><CloudUpload className="w-5 h-5" /> Publicar para Equipe</>
+            <><CloudUpload className="w-5 h-5" /> 1. Publicar para Celulares</>
           )}
         </button>
       </div>
 
-      {/* Gestão de SVCs */}
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Truck className="w-6 h-6 text-indigo-600" />
-            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Gestão de SVC/Placas</h2>
+            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Placas e SVCs</h2>
           </div>
           <button onClick={startAdding} className="p-2 text-indigo-600"><PlusCircle className="w-8 h-8" /></button>
         </div>
@@ -149,16 +132,11 @@ export const SettingsView: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* URL do Script (Backup caso mude) */}
-      <div className="bg-slate-100 p-6 rounded-[2rem] space-y-3">
-         <label className="text-[9px] font-black text-slate-400 uppercase ml-2">URL da Planilha (Google Script)</label>
-         <div className="flex gap-2">
-           <input type="text" value={newUrl} onChange={(e) => setNewUrl(e.target.value)} className="flex-1 p-4 bg-white rounded-2xl text-xs font-mono border border-slate-200 outline-none focus:border-indigo-500" placeholder="https://..." />
-           <button onClick={handleSaveUrl} className="px-6 bg-indigo-600 text-white rounded-2xl font-black text-[10px] uppercase">Definir</button>
-         </div>
+      <div className="p-4 bg-slate-100 rounded-2xl">
+        <p className="text-[8px] font-black text-slate-400 uppercase text-center mb-2">Conexão Atual</p>
+        <p className="text-[8px] font-mono text-slate-400 break-all text-center">{syncUrl || "Nenhuma URL configurada em constants.ts"}</p>
       </div>
 
-      {/* MODAL EDIÇÃO */}
       {editingSvc && (
         <div className="fixed inset-0 z-[110] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6">
           <div className="bg-white w-full max-w-md rounded-[2.5rem] flex flex-col max-h-[90%] overflow-hidden">
@@ -170,8 +148,8 @@ export const SettingsView: React.FC<Props> = ({
               <input type="text" value={editingSvc.name} onChange={e => setEditingSvc({...editingSvc, name: e.target.value.toUpperCase()})} className="w-full p-4 bg-slate-50 rounded-2xl font-black border-2 border-transparent focus:border-indigo-500" placeholder="Ex: SSP99" />
               <div className="space-y-2">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-[10px] font-black text-slate-400 uppercase">Placas Cadastradas</span>
-                  <button onClick={() => setEditingSvc({...editingSvc, vehicles: [...editingSvc.vehicles, {plate: '', category: 'Veículo Operacional'}]})} className="text-indigo-600 font-black text-[10px] uppercase">+ Nova Placa</button>
+                  <span className="text-[10px] font-black text-slate-400 uppercase">Placas</span>
+                  <button onClick={() => setEditingSvc({...editingSvc, vehicles: [...editingSvc.vehicles, {plate: '', category: 'Veículo Operacional'}]})} className="text-indigo-600 font-black text-[10px] uppercase">+ Adicionar</button>
                 </div>
                 {editingSvc.vehicles.map((v, i) => (
                   <div key={i} className="flex gap-2">
@@ -182,7 +160,7 @@ export const SettingsView: React.FC<Props> = ({
               </div>
             </div>
             <div className="p-8 bg-slate-50 flex gap-3">
-               <button onClick={saveSvcChanges} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px]">Confirmar Alteração Local</button>
+               <button onClick={saveSvcChanges} className="w-full py-4 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px]">Salvar Alteração Local</button>
             </div>
           </div>
         </div>

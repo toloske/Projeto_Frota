@@ -12,10 +12,8 @@ import {
   CloudLightning,
   Lock,
   ShieldCheck,
-  WifiOff,
   AlertTriangle,
-  RefreshCw,
-  CloudDownload
+  RefreshCw
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -25,7 +23,7 @@ const App: React.FC = () => {
   const [svcList, setSvcList] = useState<SVCConfig[]>([]);
   const [formKey, setFormKey] = useState(0);
   
-  const [syncUrl] = useState<string>(GLOBAL_SYNC_URL.trim());
+  const syncUrl = GLOBAL_SYNC_URL.trim();
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -36,37 +34,45 @@ const App: React.FC = () => {
   const pollingRef = useRef<number | null>(null);
 
   const fetchCloudData = useCallback(async (silent = false) => {
-    if (!syncUrl || !syncUrl.startsWith('http')) return;
+    if (!syncUrl || !syncUrl.startsWith('http')) {
+      console.warn("Sincronização desativada: GLOBAL_SYNC_URL não configurada.");
+      return;
+    }
 
     if (!silent) setIsSyncing(true);
     
     try {
-      const response = await fetch(`${syncUrl}?action=get_all`, { 
+      // Usamos um timestamp para evitar cache do navegador
+      const response = await fetch(`${syncUrl}?action=get_all&t=${Date.now()}`, { 
         method: 'GET',
-        redirect: 'follow',
-        cache: 'no-store'
+        redirect: 'follow'
       });
       
-      if (!response.ok) throw new Error("Offline");
+      if (!response.ok) throw new Error("Erro na rede");
       
       const data = await response.json();
       
-      // 1. Relatórios
+      // 1. Atualiza Relatórios
       if (data.submissions && Array.isArray(data.submissions)) {
         setSubmissions(currentLocal => {
           const map = new Map<string, FormData>();
+          // Adiciona os da nuvem primeiro
           data.submissions.forEach((s: any) => {
             const cleanDate = s.date && s.date.includes('T') ? s.date.split('T')[0] : s.date;
             map.set(s.id, { ...s, date: cleanDate });
           });
+          // Mantém os locais que ainda não subiram (se houver)
           currentLocal.forEach(s => { if (!map.has(s.id)) map.set(s.id, s); });
-          const merged = Array.from(map.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+          
+          const merged = Array.from(map.values()).sort((a, b) => 
+            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+          );
           localStorage.setItem('fleet_submissions', JSON.stringify(merged));
           return merged;
         });
       }
 
-      // 2. Configuração de SVCs (CRÍTICO para o celular)
+      // 2. Atualiza Placas (Nuvem -> Celular)
       if (data.config && Array.isArray(data.config) && data.config.length > 0) {
         setSvcList(data.config);
         localStorage.setItem('fleet_svc_config', JSON.stringify(data.config));
@@ -76,21 +82,21 @@ const App: React.FC = () => {
       setSyncError(false);
     } catch (e) {
       if (!silent) setSyncError(true);
-      console.error("Sync Error:", e);
+      console.error("Erro ao sincronizar:", e);
     } finally {
       if (!silent) setIsSyncing(false);
     }
   }, [syncUrl]);
 
   useEffect(() => {
-    // Inicialização do estado
+    // Carrega cache local imediato
     const savedSubmissions = localStorage.getItem('fleet_submissions');
     if (savedSubmissions) setSubmissions(JSON.parse(savedSubmissions));
 
     const savedSvc = localStorage.getItem('fleet_svc_config');
     setSvcList(savedSvc ? JSON.parse(savedSvc) : DEFAULT_SVC_LIST);
 
-    // Força sincronia imediata se houver URL
+    // Tenta sincronizar com a planilha
     if (syncUrl) {
       fetchCloudData();
       pollingRef.current = window.setInterval(() => fetchCloudData(true), 60000);
@@ -108,6 +114,7 @@ const App: React.FC = () => {
   }, [syncUrl, fetchCloudData]);
 
   const handleSaveSubmission = async (data: FormData) => {
+    // Salva local primeiro para garantir que o usuário não perca nada
     setSubmissions(prev => {
       const updated = [data, ...prev];
       localStorage.setItem('fleet_submissions', JSON.stringify(updated));
@@ -117,15 +124,19 @@ const App: React.FC = () => {
     if (syncUrl) {
       setIsSyncing(true);
       try {
+        // Envio como TEXT/PLAIN para evitar CORS Preflight no Google Scripts
         await fetch(syncUrl, {
           method: 'POST',
-          mode: 'no-cors',
+          mode: 'no-cors', // Importante para Google Scripts
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({ type: 'report', data })
         });
-        setTimeout(() => fetchCloudData(true), 2000);
+        
+        // Aguarda um pouco e atualiza para confirmar que subiu
+        setTimeout(() => fetchCloudData(true), 1500);
       } catch (e) {
         setSyncError(true);
+        console.error("Erro ao enviar reporte:", e);
       } finally {
         setIsSyncing(false);
       }
@@ -144,11 +155,6 @@ const App: React.FC = () => {
     }
   };
 
-  const handleUpdateSvcList = (newList: SVCConfig[]) => {
-    setSvcList(newList);
-    localStorage.setItem('fleet_svc_config', JSON.stringify(newList));
-  };
-
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-inter">
       <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-50">
@@ -156,7 +162,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <div 
               onClick={() => fetchCloudData()}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all ${syncUrl ? (syncError ? 'bg-rose-500' : 'bg-indigo-600') : 'bg-slate-200'} ${isSyncing ? 'animate-spin' : ''}`}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer ${syncUrl ? (syncError ? 'bg-rose-500' : 'bg-indigo-600') : 'bg-slate-200'} ${isSyncing ? 'animate-spin' : ''}`}
             >
               {syncError ? <AlertTriangle className="w-5 h-5 text-white" /> : <CloudLightning className={`w-5 h-5 ${syncUrl ? 'text-white' : 'text-slate-400'}`} />}
             </div>
@@ -165,7 +171,7 @@ const App: React.FC = () => {
               <div className="flex items-center gap-1.5 mt-1">
                 <div className={`w-1.5 h-1.5 rounded-full ${syncError ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'}`} />
                 <span className={`text-[8px] font-bold uppercase ${syncError ? 'text-rose-500' : 'text-emerald-500'}`}>
-                  {syncError ? 'Offline' : 'Online'}
+                  {syncError ? 'Erro Sync' : (isSyncing ? 'Sincronizando' : 'Conectado')}
                 </span>
               </div>
             </div>
@@ -207,10 +213,10 @@ const App: React.FC = () => {
             {activeTab === 'settings' && (
               <SettingsView 
                 svcList={svcList} 
-                onUpdate={handleUpdateSvcList} 
+                onUpdate={(l) => { setSvcList(l); localStorage.setItem('fleet_svc_config', JSON.stringify(l)); }} 
                 onClearData={() => { if(confirm('Resetar Tudo?')) { localStorage.clear(); window.location.reload(); }}}
                 syncUrl={syncUrl}
-                onUpdateSyncUrl={() => {}} // Bloqueado, usa o constants.ts
+                onUpdateSyncUrl={() => {}} 
                 submissions={submissions}
                 onImportData={(data) => { setSubmissions(data); localStorage.setItem('fleet_submissions', JSON.stringify(data)); }}
               />

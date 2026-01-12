@@ -2,10 +2,10 @@
 import { SVCConfig } from './types';
 
 /**
- * COLE O SEU LINK DO GOOGLE APPS SCRIPT ABAIXO
- * Exemplo: "https://script.google.com/macros/s/AKfycb.../exec"
+ * IMPORTANTE: COLE O SEU LINK DO GOOGLE APPS SCRIPT ABAIXO
+ * Sem este link, o computador e o celular não vão conversar.
  */
-export const GLOBAL_SYNC_URL = "https://script.google.com/macros/s/AKfycbw93Ar7SLf9NdbWqofjtWJrDL1tOQalV6u-G0EgEZvZhjU2P2TipLwHYKRg-NTupQpi_A/exec"; 
+export const GLOBAL_SYNC_URL = ""; 
 
 export const VEHICLE_CATEGORIES = [
   'BULK - VAN EQUIPE ÚNICA POOL',
@@ -26,6 +26,7 @@ export const STOPPED_JUSTIFICATIONS = [
   'OUTROS'
 ];
 
+// Lista padrão (caso o servidor esteja offline)
 const rawData = `
 SSP38	JCI8F63
 SSP38	JCI8F68
@@ -310,13 +311,15 @@ SSP23	TDB8H29
 SSP39	TAU2F82
 `;
 
-const parseSvcData = (input: string): SVCConfig[] => {
+export const parseSvcData = (input: string): SVCConfig[] => {
   const lines = input.trim().split('\n');
   const svcMap = new Map<string, { plate: string; category: string }[]>();
 
   lines.forEach(line => {
-    const [svc, plate] = line.trim().split(/\s+/);
-    if (svc && plate) {
+    const parts = line.trim().split(/\s+/);
+    if (parts.length >= 2) {
+      const svc = parts[0];
+      const plate = parts[1];
       const vehicles = svcMap.get(svc) || [];
       vehicles.push({ plate, category: 'Veículo Operacional' });
       svcMap.set(svc, vehicles);
