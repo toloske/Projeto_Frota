@@ -47,43 +47,52 @@ const App: React.FC = () => {
         cache: 'no-store'
       });
       
-      if (!response.ok) throw new Error(`HTTP Error: ${response.status}`);
+      if (!response.ok) throw new Error(`Erro HTTP: ${response.status}`);
       
       const jsonText = await response.text();
       setLastRawResponse(jsonText);
-      const data = JSON.parse(jsonText);
       
-      // 1. Relatórios
-      if (data.submissions && Array.isArray(data.submissions)) {
-        setSubmissions(currentLocal => {
-          const map = new Map<string, FormData>();
-          data.submissions.forEach((s: any) => {
-            const cleanDate = s.date && s.date.includes('T') ? s.date.split('T')[0] : s.date;
-            map.set(s.id, { ...s, date: cleanDate });
-          });
-          currentLocal.forEach(s => { if (!map.has(s.id)) map.set(s.id, s); });
-          const merged = Array.from(map.values()).sort((a, b) => 
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-          );
-          localStorage.setItem('fleet_submissions', JSON.stringify(merged));
-          return merged;
-        });
+      let data;
+      try {
+        data = JSON.parse(jsonText);
+      } catch (e) {
+        console.error("Falha ao processar JSON", jsonText);
+        throw new Error("Resposta do servidor não é um JSON válido");
       }
-
-      // 2. Configuração de Placas
-      if (data.config && Array.isArray(data.config) && data.config.length > 0) {
-        setSvcList(data.config);
-        setConfigSource('cloud');
-        localStorage.setItem('fleet_svc_config', JSON.stringify(data.config));
-        localStorage.setItem('fleet_config_source', 'cloud');
-      } else {
-        // Se o servidor respondeu mas não enviou config, mantemos o que já temos no localStorage
-        // para não "resetar" o usuário para a lista padrão acidentalmente.
-        const cached = localStorage.getItem('fleet_svc_config');
-        if (cached) {
-          setSvcList(JSON.parse(cached));
-          setConfigSource('cloud');
+      
+      // Se o servidor retornar o objeto correto { submissions, config }
+      if (data && typeof data === 'object' && !Array.isArray(data)) {
+        
+        // 1. Processar Relatórios
+        if (data.submissions && Array.isArray(data.submissions)) {
+          setSubmissions(currentLocal => {
+            const map = new Map<string, FormData>();
+            data.submissions.forEach((s: any) => {
+              const cleanDate = s.date && s.date.includes('T') ? s.date.split('T')[0] : s.date;
+              map.set(s.id, { ...s, date: cleanDate });
+            });
+            currentLocal.forEach(s => { if (!map.has(s.id)) map.set(s.id, s); });
+            const merged = Array.from(map.values()).sort((a, b) => 
+              new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
+            );
+            localStorage.setItem('fleet_submissions', JSON.stringify(merged));
+            return merged;
+          });
         }
+
+        // 2. Processar Configuração de Placas
+        if (data.config && Array.isArray(data.config) && data.config.length > 0) {
+          console.log("Configuração de nuvem aplicada com sucesso.");
+          setSvcList(data.config);
+          setConfigSource('cloud');
+          localStorage.setItem('fleet_svc_config', JSON.stringify(data.config));
+          localStorage.setItem('fleet_config_source', 'cloud');
+        }
+      } 
+      // Se o servidor retornar apenas o array (formato antigo/errado), processa apenas submissions
+      else if (Array.isArray(data)) {
+        setSubmissions(data);
+        localStorage.setItem('fleet_submissions', JSON.stringify(data));
       }
       
       setLastSync(new Date());
@@ -101,11 +110,11 @@ const App: React.FC = () => {
     if (savedSubmissions) setSubmissions(JSON.parse(savedSubmissions));
 
     const savedSvc = localStorage.getItem('fleet_svc_config');
-    const savedSource = localStorage.getItem('fleet_config_source') as 'cloud' | 'default';
+    const savedSource = localStorage.getItem('fleet_config_source');
     
     if (savedSvc) {
       setSvcList(JSON.parse(savedSvc));
-      setConfigSource(savedSource || 'cloud');
+      setConfigSource((savedSource as any) || 'cloud');
     } else {
       setSvcList(DEFAULT_SVC_LIST);
       setConfigSource('default');
