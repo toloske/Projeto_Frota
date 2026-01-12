@@ -56,22 +56,20 @@ const App: React.FC = () => {
       try {
         data = JSON.parse(jsonText);
       } catch (e) {
-        console.error("Falha ao processar JSON", jsonText);
-        throw new Error("Resposta do servidor não é um JSON válido");
+        throw new Error("Resposta do servidor inválida");
       }
       
-      // Se o servidor retornar o objeto correto { submissions, config }
+      // Caso 1: Estrutura correta { submissions, config }
       if (data && typeof data === 'object' && !Array.isArray(data)) {
-        
-        // 1. Processar Relatórios
+        // Atualizar Relatórios
         if (data.submissions && Array.isArray(data.submissions)) {
           setSubmissions(currentLocal => {
-            const map = new Map<string, FormData>();
-            data.submissions.forEach((s: any) => {
-              const cleanDate = s.date && s.date.includes('T') ? s.date.split('T')[0] : s.date;
-              map.set(s.id, { ...s, date: cleanDate });
-            });
+            const map = new Map();
+            // Primeiro coloca os da nuvem
+            data.submissions.forEach((s: any) => map.set(s.id, s));
+            // Depois mescla com locais que ainda não subiram (opcional)
             currentLocal.forEach(s => { if (!map.has(s.id)) map.set(s.id, s); });
+            
             const merged = Array.from(map.values()).sort((a, b) => 
               new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
             );
@@ -80,16 +78,15 @@ const App: React.FC = () => {
           });
         }
 
-        // 2. Processar Configuração de Placas
+        // Atualizar Configuração (Placas)
         if (data.config && Array.isArray(data.config) && data.config.length > 0) {
-          console.log("Configuração de nuvem aplicada com sucesso.");
           setSvcList(data.config);
           setConfigSource('cloud');
           localStorage.setItem('fleet_svc_config', JSON.stringify(data.config));
           localStorage.setItem('fleet_config_source', 'cloud');
         }
       } 
-      // Se o servidor retornar apenas o array (formato antigo/errado), processa apenas submissions
+      // Caso 2: Fallback se o script estiver mandando apenas o array de relatórios
       else if (Array.isArray(data)) {
         setSubmissions(data);
         localStorage.setItem('fleet_submissions', JSON.stringify(data));
@@ -99,13 +96,14 @@ const App: React.FC = () => {
       setSyncError(false);
     } catch (e) {
       if (!silent) setSyncError(true);
-      console.error("Sync Error:", e);
+      console.error("Erro na sincronização:", e);
     } finally {
       if (!silent) setIsSyncing(false);
     }
   }, [syncUrl]);
 
   useEffect(() => {
+    // Carregar do cache inicial
     const savedSubmissions = localStorage.getItem('fleet_submissions');
     if (savedSubmissions) setSubmissions(JSON.parse(savedSubmissions));
 
@@ -120,20 +118,19 @@ const App: React.FC = () => {
       setConfigSource('default');
     }
 
+    // Sincronização inicial e periódica
     if (syncUrl) {
       fetchCloudData();
-      pollingRef.current = window.setInterval(() => fetchCloudData(true), 60000);
+      pollingRef.current = window.setInterval(() => fetchCloudData(true), 30000); // 30 segundos
     }
 
-    const handleFocus = () => fetchCloudData(true);
-    window.addEventListener('focus', handleFocus);
     return () => {
-      window.removeEventListener('focus', handleFocus);
       if (pollingRef.current) clearInterval(pollingRef.current);
     };
   }, [syncUrl, fetchCloudData]);
 
   const handleSaveSubmission = async (data: FormData) => {
+    // Atualiza local imediatamente para UX rápida
     setSubmissions(prev => {
       const updated = [data, ...prev];
       localStorage.setItem('fleet_submissions', JSON.stringify(updated));
@@ -145,11 +142,12 @@ const App: React.FC = () => {
       try {
         await fetch(syncUrl, {
           method: 'POST',
-          mode: 'no-cors',
+          mode: 'no-cors', // Necessário para Google Scripts
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({ type: 'report', data })
         });
-        setTimeout(() => fetchCloudData(true), 2000);
+        // Aguarda um pouco e puxa os dados atualizados da nuvem
+        setTimeout(() => fetchCloudData(true), 1500);
       } catch (e) {
         setSyncError(true);
       } finally {
