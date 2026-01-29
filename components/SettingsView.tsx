@@ -14,7 +14,8 @@ import {
   DatabaseZap,
   Terminal,
   Eye,
-  EyeOff
+  EyeOff,
+  Link2
 } from 'lucide-react';
 
 interface Props {
@@ -29,14 +30,20 @@ interface Props {
 }
 
 export const SettingsView: React.FC<Props> = ({ 
-  svcList, onUpdate, onClearData, syncUrl, lastRawResponse 
+  svcList, onUpdate, onClearData, syncUrl, onUpdateSyncUrl, lastRawResponse 
 }) => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishStatus, setPublishStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [showDebug, setShowDebug] = useState(false);
+  const [urlInput, setUrlInput] = useState(syncUrl);
   
   const [editingSvc, setEditingSvc] = useState<SVCConfig | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
+
+  const handleSaveUrl = () => {
+    onUpdateSyncUrl(urlInput);
+    alert("URL salva com sucesso!");
+  };
 
   const publishConfigToCloud = async () => {
     if (!syncUrl || !syncUrl.startsWith('http')) {
@@ -89,6 +96,30 @@ export const SettingsView: React.FC<Props> = ({
 
   return (
     <div className="space-y-6 pb-32">
+      {/* SEÇÃO DA URL DO SERVIDOR */}
+      <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
+        <div className="flex items-center gap-3 mb-2">
+          <Link2 className="w-6 h-6 text-indigo-600" />
+          <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Servidor Operacional</h2>
+        </div>
+        <p className="text-[10px] font-bold text-slate-400 uppercase leading-relaxed">Insira o link do seu Google Apps Script para sincronização global.</p>
+        <div className="flex gap-2">
+          <input 
+            type="text" 
+            value={urlInput} 
+            onChange={(e) => setUrlInput(e.target.value)}
+            className="flex-1 p-4 bg-slate-50 rounded-2xl font-bold text-xs outline-none border-2 border-transparent focus:border-indigo-500"
+            placeholder="https://script.google.com/macros/s/..."
+          />
+          <button 
+            onClick={handleSaveUrl}
+            className="px-6 bg-indigo-600 text-white rounded-2xl font-black uppercase text-[10px] active:scale-95 transition-all"
+          >
+            Salvar
+          </button>
+        </div>
+      </div>
+
       <div className="bg-indigo-600 text-white p-8 rounded-[2.5rem] shadow-xl space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

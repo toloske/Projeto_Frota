@@ -1,7 +1,7 @@
 
 import { SVCConfig } from './types';
 
-export const GLOBAL_SYNC_URL = (import.meta as any).env?.VITE_GLOBAL_SYNC_URL || "https://script.google.com/macros/s/AKfycbwv0eF_HC0KBzpq__AGixTBWmoYMRBNKi6WYTXHrSbqgjlE6tGEZVeUDfpaAFHwPH4Z/exec"; 
+export const GLOBAL_SYNC_URL = (import.meta as any).env?.VITE_GLOBAL_SYNC_URL || ""; 
 
 export const VEHICLE_CATEGORIES = [
   'VUC DEDICADO COM AJUDANTE',

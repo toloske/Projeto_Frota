@@ -25,7 +25,10 @@ const App: React.FC = () => {
   const [lastRawResponse, setLastRawResponse] = useState<string>('');
   const [formKey, setFormKey] = useState(0);
   
-  const syncUrl = GLOBAL_SYNC_URL;
+  // Inicializa a URL do localStorage ou da constante de ambiente
+  const [syncUrl, setSyncUrl] = useState<string>(() => {
+    return localStorage.getItem('fleet_sync_url') || GLOBAL_SYNC_URL || "";
+  });
 
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSync, setLastSync] = useState<Date | null>(null);
@@ -55,7 +58,6 @@ const App: React.FC = () => {
       const data = JSON.parse(jsonText);
       
       if (data && typeof data === 'object' && !Array.isArray(data)) {
-        // 1. Relatórios
         if (data.submissions && Array.isArray(data.submissions)) {
           const map = new Map();
           data.submissions.forEach((s: any) => map.set(s.id, s));
@@ -67,7 +69,6 @@ const App: React.FC = () => {
           localStorage.setItem('fleet_submissions', JSON.stringify(sorted));
         }
 
-        // 2. Configuração de Placas
         if (data.config && Array.isArray(data.config) && data.config.length > 0) {
           setSvcList(data.config);
           setConfigSource('cloud');
@@ -117,6 +118,12 @@ const App: React.FC = () => {
     };
   }, [syncUrl, fetchCloudData]);
 
+  const handleUpdateSyncUrl = (url: string) => {
+    setSyncUrl(url);
+    localStorage.setItem('fleet_sync_url', url);
+    setSyncError(false);
+  };
+
   const handleSaveSubmission = async (data: FormData) => {
     setSubmissions(prev => {
       const updated = [data, ...prev];
@@ -158,7 +165,7 @@ const App: React.FC = () => {
               <h1 className="text-sm font-black uppercase tracking-tight leading-none">Frota Hub</h1>
               <div className="flex items-center gap-1.5 mt-1">
                 {!syncUrl ? (
-                  <span className="text-[7px] font-black text-rose-500 uppercase">URL não configurada</span>
+                  <button onClick={() => { setShowLoginModal(true); }} className="text-[7px] font-black text-rose-500 uppercase animate-pulse">URL não configurada (Clique aqui)</button>
                 ) : (
                   <>
                     <div className={`w-1.5 h-1.5 rounded-full ${syncError ? 'bg-rose-500' : 'bg-emerald-500 animate-pulse'}`} />
@@ -212,7 +219,7 @@ const App: React.FC = () => {
                 onUpdate={(l) => { setSvcList(l); localStorage.setItem('fleet_svc_config', JSON.stringify(l)); }} 
                 onClearData={() => { if(confirm('Resetar Tudo?')) { localStorage.clear(); window.location.reload(); }}}
                 syncUrl={syncUrl}
-                onUpdateSyncUrl={() => {}} 
+                onUpdateSyncUrl={handleUpdateSyncUrl} 
                 submissions={submissions}
                 onImportData={(data) => { setSubmissions(data); localStorage.setItem('fleet_submissions', JSON.stringify(data)); }}
                 lastRawResponse={lastRawResponse}
