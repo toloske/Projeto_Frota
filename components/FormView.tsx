@@ -109,7 +109,6 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNew
     try {
       await onSave(finalData);
       alert("✅ Relatório enviado com sucesso!");
-      // Força o retorno para a primeira página resetando o componente
       onNewForm();
     } catch (err) {
       alert("❌ Erro ao enviar relatório. Tente novamente.");
@@ -127,6 +126,10 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNew
     });
     return groups;
   }, [fleetStatus]);
+
+  const updateVehicleStatus = (plate: string, updates: Partial<VehicleStatus>) => {
+    setFleetStatus(prev => prev.map(p => p.plate === plate ? { ...p, ...updates } : p));
+  };
 
   return (
     <div className="pb-10 pt-4">
@@ -207,6 +210,11 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNew
             </div>
             
             <div className="space-y-10">
+              {fleetStatus.length === 0 && (
+                 <div className="text-center py-10 bg-white rounded-3xl border border-dashed border-slate-200">
+                   <p className="text-[10px] font-black text-slate-400 uppercase">Este SVC não possui frota fixa cadastrada.</p>
+                 </div>
+              )}
               {(Object.entries(groupedFleet) as [string, VehicleStatus[]][]).map(([category, vehicles]) => (
                 <div key={category} className="space-y-4">
                   <div className="flex items-center gap-2 border-b-2 border-slate-100 pb-2">
@@ -223,7 +231,7 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNew
                             <span className="font-black text-lg text-slate-800 uppercase block leading-none">{v.plate}</span>
                             <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest mt-1 block">ID: {v.plate.slice(-4)}</span>
                           </div>
-                          <button onClick={() => setFleetStatus(prev => prev.map(p => p.plate === v.plate ? {...p, running: !p.running} : p))} 
+                          <button onClick={() => updateVehicleStatus(v.plate, { running: !v.running })} 
                             className={`px-5 py-3 rounded-2xl font-black text-[10px] uppercase shadow-sm transition-transform active:scale-90 ${v.running ? 'bg-emerald-50 text-emerald-600' : 'bg-rose-600 text-white'}`}>
                             {v.running ? 'Rodou' : 'Parado'}
                           </button>
@@ -233,12 +241,24 @@ export const FormView: React.FC<Props> = ({ onSave, svcList, configSource, onNew
                             <span className="text-[9px] font-black text-rose-400 uppercase block text-center tracking-widest">Justificativa de Ausência</span>
                             <div className="grid grid-cols-2 gap-2">
                               {STOPPED_JUSTIFICATIONS.map(j => (
-                                <button key={j} onClick={() => setFleetStatus(prev => prev.map(p => p.plate === v.plate ? {...p, justification: j} : p))}
+                                <button key={j} onClick={() => updateVehicleStatus(v.plate, { justification: j })}
                                   className={`p-3 rounded-xl text-[9px] font-black uppercase border-2 transition-all ${v.justification === j ? 'bg-rose-600 text-white border-rose-600 shadow-md scale-[1.02]' : 'bg-white text-slate-400 border-slate-100'}`}>
                                   {j}
                                 </button>
                               ))}
                             </div>
+                            {v.justification === 'OUTROS' && (
+                              <div className="mt-3 animate-in fade-in slide-in-from-top-2">
+                                <label className="text-[8px] font-black text-rose-400 uppercase block mb-1">Especifique o motivo:</label>
+                                <textarea 
+                                  value={v.customJustification || ''} 
+                                  onChange={e => updateVehicleStatus(v.plate, { customJustification: e.target.value })}
+                                  placeholder="Digite aqui a justificativa..."
+                                  className="w-full p-4 bg-white border-2 border-rose-200 rounded-2xl font-bold text-slate-700 text-xs outline-none focus:border-rose-400"
+                                  rows={2}
+                                />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

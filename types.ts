@@ -4,6 +4,7 @@ export interface VehicleStatus {
   category: string;
   running: boolean;
   justification?: string;
+  customJustification?: string; // Campo para o texto livre de "OUTROS"
 }
 
 export interface SpotOffer {
@@ -29,7 +30,7 @@ export interface FormData {
   fleetStatus: VehicleStatus[];
   baseCapacity: Record<string, number>;
   problems: OperationalProblem;
-  weeklyAcceptance?: string; // Novo campo para o print de aceite
+  weeklyAcceptance?: string;
   acceptances: string[];
 }
 

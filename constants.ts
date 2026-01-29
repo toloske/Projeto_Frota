@@ -353,6 +353,7 @@ SSP8	TAS9B92
 SSP8	TAS9B93
 SSP36	TAS9D45
 SSP36	TAS9D47
+SSP18	TAS9D48
 SSP18	TAS9D55
 SSP18	TAS9D57
 SSP18	TAS9D64
@@ -406,6 +407,13 @@ SSP23	TDB8H09
 SSP23	TDB8H10
 SSP23	TDB8H29
 SSP39	TAU2F82
+SSP4	-
+SSP10	-
+SSP22	-
+SSP26	-
+SSP31	-
+SSP40	-
+SSP49	-
 `;
 
 export const parseSvcData = (input: string): SVCConfig[] => {
@@ -414,12 +422,14 @@ export const parseSvcData = (input: string): SVCConfig[] => {
 
   lines.forEach(line => {
     const parts = line.trim().split(/\s+/);
-    if (parts.length >= 2) {
+    if (parts.length >= 1) {
       const svc = parts[0];
-      const plate = parts[1];
+      const plate = parts[1] === '-' ? '' : (parts[1] || '');
       const vehicles = svcMap.get(svc) || [];
-      const category = PLATE_MODAL_MAP[plate] || 'Veículo Operacional';
-      vehicles.push({ plate, category });
+      if (plate) {
+        const category = PLATE_MODAL_MAP[plate] || 'Veículo Operacional';
+        vehicles.push({ plate, category });
+      }
       svcMap.set(svc, vehicles);
     }
   });
