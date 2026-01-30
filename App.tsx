@@ -15,8 +15,6 @@ import {
   RefreshCw,
   Wifi,
   WifiOff,
-  CloudDownload,
-  AlertCircle,
   CheckCircle2
 } from 'lucide-react';
 
@@ -66,19 +64,17 @@ const App: React.FC = () => {
 
     for (const item of pending) {
       try {
-        // Envio POST para o Google Apps Script
+        // Para Google Script no-cors, NÃO envie Content-Type: application/json
+        // Envie como texto puro para evitar pre-flight OPTIONS que o Google bloqueia
         await fetch(syncUrl, {
           method: 'POST',
-          mode: 'no-cors', // Fundamental para Google Script
+          mode: 'no-cors',
           cache: 'no-cache',
-          headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({ type: 'report', data: item })
         });
         
-        // Em no-cors, o navegador não deixa ler o corpo, mas se o fetch não deu erro de rede, consideramos enviado
         await db.markAsSynced(item.id);
       } catch (e) {
-        console.error("Erro no envio:", e);
         setSyncError(true);
         break; 
       }
@@ -88,7 +84,6 @@ const App: React.FC = () => {
     setIsSyncing(false);
   }, [syncUrl, isSyncing, refreshLocalData]);
 
-  // Sincronização automática a cada 30 segundos
   useEffect(() => {
     const interval = setInterval(syncQueue, 30000);
     return () => clearInterval(interval);
@@ -97,7 +92,6 @@ const App: React.FC = () => {
   const handleSaveSubmission = async (data: FormData) => {
     await db.saveSubmission(data);
     await refreshLocalData();
-    // Dispara sincronização imediatamente após salvar
     setTimeout(syncQueue, 500); 
     return true;
   };
@@ -114,21 +108,12 @@ const App: React.FC = () => {
       <header className="bg-white border-b border-slate-200 p-4 sticky top-0 z-50">
         <div className="container mx-auto flex justify-between items-center">
           <div className="flex items-center gap-3">
-            <div 
-              onClick={syncQueue}
-              className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer shadow-sm ${isSyncing ? 'bg-indigo-600 animate-pulse' : (syncError ? 'bg-rose-500' : (!isConfigured ? 'bg-slate-100' : (pendingCount > 0 ? 'bg-amber-100' : 'bg-slate-100')))}`}
-            >
-              {isSyncing ? <RefreshCw className="w-5 h-5 text-white animate-spin" /> : (syncError ? <WifiOff className="w-5 h-5 text-white" /> : (pendingCount > 0 ? <Wifi className="w-5 h-5 text-amber-600" /> : <CheckCircle2 className={`w-5 h-5 ${isConfigured ? 'text-emerald-500' : 'text-slate-300'}`} />))}
+            <div onClick={syncQueue} className={`w-11 h-11 rounded-2xl flex items-center justify-center transition-all cursor-pointer shadow-sm ${isSyncing ? 'bg-indigo-600 animate-pulse' : (syncError ? 'bg-rose-500' : (!isConfigured ? 'bg-slate-100' : 'bg-slate-100'))}`}>
+              {isSyncing ? <RefreshCw className="w-5 h-5 text-white animate-spin" /> : (syncError ? <WifiOff className="w-5 h-5 text-white" /> : <Wifi className={`w-5 h-5 ${pendingCount > 0 ? 'text-amber-500' : 'text-slate-300'}`} />)}
             </div>
             <div>
               <h1 className="text-sm font-black uppercase tracking-tight leading-none">Frota Hub</h1>
-              <div className="flex items-center gap-1.5 mt-1">
-                {pendingCount > 0 ? (
-                  <span className="text-[9px] font-black text-amber-600 uppercase">{pendingCount} na fila</span>
-                ) : (
-                  <span className={`text-[9px] font-black uppercase ${isConfigured ? 'text-emerald-500' : 'text-slate-300'}`}>{isConfigured ? 'Sincronizado' : 'Offline'}</span>
-                )}
-              </div>
+              <span className={`text-[9px] font-black uppercase ${isConfigured ? 'text-emerald-500' : 'text-slate-300'}`}>{isConfigured ? 'Servidor Ativo' : 'Offline'}</span>
             </div>
           </div>
           
