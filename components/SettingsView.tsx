@@ -17,7 +17,8 @@ import {
   EyeOff,
   Link2,
   Zap,
-  ShieldAlert
+  ShieldAlert,
+  AlertCircle
 } from 'lucide-react';
 
 interface Props {
@@ -49,26 +50,38 @@ export const SettingsView: React.FC<Props> = ({
   };
 
   const testConnection = async () => {
-    if (!urlInput) return alert("Insira uma URL primeiro.");
+    // Verifica se a URL é a do placeholder
+    if (!urlInput || urlInput.includes("SUA_URL_DO_GOOGLE")) {
+      return alert("ERRO: Você ainda não configurou o seu link do Google no arquivo constants.ts.");
+    }
+
     setIsTesting(true);
     try {
-      const resp = await fetch(`${urlInput}?action=ping&t=${Date.now()}`);
-      const text = await resp.text();
-      if (text.includes("PONG")) {
-        alert("✅ CONEXÃO ESTABELECIDA!\nO servidor está respondendo corretamente.");
-      } else {
-        alert("⚠ RESPOSTA INESPERADA:\nO link respondeu, mas não com a mensagem de teste. Verifique o script.");
-      }
+      // Usamos mode 'no-cors' para o teste de ping básico também, 
+      // pois o Google Script redireciona e isso causa erros de CORS no fetch padrão.
+      const controller = new AbortController();
+      const id = setTimeout(() => controller.abort(), 10000);
+
+      await fetch(`${urlInput}${urlInput.includes('?') ? '&' : '?'}action=ping&t=${Date.now()}`, {
+        mode: 'no-cors',
+        signal: controller.signal
+      });
+      
+      clearTimeout(id);
+      
+      // Se o fetch no-cors não deu erro de rede (catch), 
+      // significa que o servidor está lá e aceitou a requisição.
+      alert("✅ SERVIDOR ALCANÇADO!\n\nO app conseguiu disparar um sinal para o link configurado. Se os dados não aparecerem na planilha, verifique se você publicou o script como 'Qualquer pessoa'.");
     } catch (e) {
-      alert("❌ ERRO DE CONEXÃO:\nNão foi possível alcançar o servidor. Verifique o link ou se você publicou como 'Qualquer pessoa' no Google Script.");
+      alert("❌ ERRO DE CONEXÃO:\n\nNão foi possível alcançar o link. Verifique se a URL está correta e se o script do Google está publicado.");
     } finally {
       setIsTesting(false);
     }
   };
 
   const publishConfigToCloud = async () => {
-    if (!syncUrl || syncUrl.length < 20) {
-      alert("Link do servidor não configurado corretamente.");
+    if (!syncUrl || syncUrl.length < 20 || syncUrl.includes("SUA_URL_DO_GOOGLE")) {
+      alert("Link do servidor não configurado corretamente no código.");
       return;
     }
 
@@ -115,6 +128,8 @@ export const SettingsView: React.FC<Props> = ({
     setEditingSvc(null);
   };
 
+  const isUsingDefaultUrl = urlInput.includes("SUA_URL_DO_GOOGLE");
+
   return (
     <div className="space-y-6 pb-32">
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
@@ -123,20 +138,30 @@ export const SettingsView: React.FC<Props> = ({
           <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Status do Servidor</h2>
         </div>
         
-        <div className="p-4 bg-indigo-50 rounded-2xl flex items-start gap-3">
-          <ShieldAlert className="w-5 h-5 text-indigo-600 shrink-0" />
-          <div>
-            <p className="text-[10px] font-black text-indigo-800 uppercase">Configuração Ativa</p>
-            <p className="text-[10px] font-bold text-indigo-600 break-all">{syncUrl || "Nenhuma URL configurada em constants.ts"}</p>
+        {isUsingDefaultUrl ? (
+          <div className="p-5 bg-rose-50 rounded-2xl flex items-start gap-3 border border-rose-100">
+            <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
+            <div>
+              <p className="text-[10px] font-black text-rose-800 uppercase leading-none mb-1">Link não configurado</p>
+              <p className="text-[10px] font-bold text-rose-600 leading-tight">Você precisa abrir o arquivo <span className="underline">constants.ts</span> e colar o link do seu Google Script lá.</p>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className="p-4 bg-indigo-50 rounded-2xl flex items-start gap-3">
+            <ShieldAlert className="w-5 h-5 text-indigo-600 shrink-0" />
+            <div>
+              <p className="text-[10px] font-black text-indigo-800 uppercase">Configuração Ativa</p>
+              <p className="text-[10px] font-bold text-indigo-600 break-all">{syncUrl}</p>
+            </div>
+          </div>
+        )}
 
         <div className="space-y-3">
           <div className="flex gap-2">
             <button 
               onClick={testConnection}
               disabled={isTesting}
-              className="flex-1 py-4 bg-emerald-50 text-emerald-600 rounded-2xl font-black uppercase text-[10px] active:scale-95 transition-all flex items-center justify-center gap-2"
+              className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 transition-all flex items-center justify-center gap-2 ${isUsingDefaultUrl ? 'bg-slate-100 text-slate-400' : 'bg-emerald-50 text-emerald-600'}`}
             >
               {isTesting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
               Testar Conexão
@@ -172,8 +197,8 @@ export const SettingsView: React.FC<Props> = ({
 
         <button 
           onClick={publishConfigToCloud}
-          disabled={isPublishing}
-          className={`w-full py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 transition-all ${publishStatus === 'success' ? 'bg-emerald-500 text-white' : (publishStatus === 'error' ? 'bg-rose-500 text-white' : 'bg-white text-indigo-600 shadow-lg active:scale-95')}`}
+          disabled={isPublishing || isUsingDefaultUrl}
+          className={`w-full py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 transition-all ${publishStatus === 'success' ? 'bg-emerald-500 text-white' : (publishStatus === 'error' ? 'bg-rose-500 text-white' : 'bg-white text-indigo-600 shadow-lg active:scale-95 disabled:opacity-50 disabled:active:scale-100')}`}
         >
           {isPublishing ? <RefreshCw className="w-5 h-5 animate-spin" /> : publishStatus === 'success' ? <><CheckCircle className="w-5 h-5" /> Publicado!</> : <><CloudUpload className="w-5 h-5" /> Publicar para Celulares</>}
         </button>
