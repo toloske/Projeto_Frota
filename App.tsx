@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { FormView } from './components/FormView';
 import { AdminDashboard } from './components/AdminDashboard';
 import { SettingsView } from './components/SettingsView';
@@ -10,14 +10,13 @@ import {
   ClipboardList, 
   LayoutDashboard, 
   Settings, 
-  CloudLightning,
   Lock,
   ShieldCheck,
-  AlertTriangle,
   RefreshCw,
   Wifi,
   WifiOff,
-  CloudDownload
+  CloudDownload,
+  AlertCircle
 } from 'lucide-react';
 
 const App: React.FC = () => {
@@ -33,7 +32,6 @@ const App: React.FC = () => {
   const [passwordInput, setPasswordInput] = useState('');
   const [pendingCount, setPendingCount] = useState(0);
 
-  // Carregar dados locais inicialmente
   const refreshLocalData = useCallback(async () => {
     const subs = await db.getAllSubmissions();
     setSubmissions(subs);
@@ -47,34 +45,14 @@ const App: React.FC = () => {
     refreshLocalData();
   }, [formKey, refreshLocalData]);
 
-  // Função para puxar dados do servidor (Apenas para o Gestor)
-  const pullFromServer = useCallback(async () => {
-    if (!syncUrl || userRole !== 'admin' || isSyncing) return;
-    
-    setIsSyncing(true);
-    try {
-      const response = await fetch(`${syncUrl}?action=get_all&t=${Date.now()}`);
-      const text = await response.text();
-      const data = JSON.parse(text);
-      
-      if (data && data.submissions) {
-        await db.upsertSubmissionsFromServer(data.submissions);
-        await refreshLocalData();
-      }
-    } catch (e) {
-      console.error("Falha ao puxar dados do servidor:", e);
-    } finally {
-      setIsSyncing(false);
-    }
-  }, [syncUrl, userRole, isSyncing, refreshLocalData]);
-
-  // Fila de Envio (Push)
+  // Sincronização de saída (Push)
   const syncQueue = useCallback(async () => {
     if (!syncUrl || isSyncing) return;
     
     const pending = await db.getPendingSubmissions();
     if (pending.length === 0) {
       setPendingCount(0);
+      setSyncError(false);
       return;
     }
 
@@ -83,17 +61,21 @@ const App: React.FC = () => {
 
     for (const item of pending) {
       try {
-        await fetch(syncUrl, {
+        // Para Google Sheets, usamos text/plain para evitar o preflight de CORS
+        // E usamos o método POST enviando o JSON como string
+        const response = await fetch(syncUrl, {
           method: 'POST',
-          mode: 'no-cors',
+          mode: 'no-cors', // Necessário para Google Apps Script de domínios diferentes
           headers: { 'Content-Type': 'text/plain' },
           body: JSON.stringify({ type: 'report', data: item })
         });
         
-        // Em no-cors não temos certeza do 200, mas se não estourar catch, marcamos
+        // No modo 'no-cors', não conseguimos ler o status 200, 
+        // mas se a promessa resolveu, o dado saiu do navegador.
+        // Marcamos como sincronizado para limpar a fila local.
         await db.markAsSynced(item.id);
       } catch (e) {
-        console.error("Erro na rede ao sincronizar:", item.id);
+        console.error("Erro ao sincronizar item:", item.id, e);
         setSyncError(true);
         break; 
       }
@@ -103,9 +85,28 @@ const App: React.FC = () => {
     setIsSyncing(false);
   }, [syncUrl, isSyncing, refreshLocalData]);
 
-  // Auto-sync
+  // Sincronização de entrada (Pull - Apenas Gestor)
+  const pullFromServer = useCallback(async () => {
+    if (!syncUrl || userRole !== 'admin' || isSyncing) return;
+    
+    setIsSyncing(true);
+    try {
+      const response = await fetch(`${syncUrl}?t=${Date.now()}`);
+      const data = await response.json();
+      
+      if (data && data.submissions) {
+        await db.upsertSubmissionsFromServer(data.submissions);
+        await refreshLocalData();
+      }
+    } catch (e) {
+      console.error("Erro ao baixar dados:", e);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, [syncUrl, userRole, isSyncing, refreshLocalData]);
+
+  // Auto-sync a cada 30 segundos
   useEffect(() => {
-    syncQueue();
     const interval = setInterval(() => {
       syncQueue();
       if (userRole === 'admin') pullFromServer();
@@ -116,8 +117,8 @@ const App: React.FC = () => {
   const handleSaveSubmission = async (data: FormData) => {
     await db.saveSubmission(data);
     await refreshLocalData();
-    // Tenta sincronizar imediatamente após salvar
-    setTimeout(syncQueue, 500); 
+    // Tenta enviar imediatamente
+    syncQueue();
     return true;
   };
 
@@ -133,7 +134,7 @@ const App: React.FC = () => {
           <div className="flex items-center gap-3">
             <div 
               onClick={() => { syncQueue(); if(userRole === 'admin') pullFromServer(); }}
-              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer ${isSyncing ? 'bg-indigo-600' : (syncError ? 'bg-rose-500' : 'bg-slate-100')}`}
+              className={`w-10 h-10 rounded-xl flex items-center justify-center transition-all cursor-pointer shadow-sm ${isSyncing ? 'bg-indigo-600 animate-pulse' : (syncError ? 'bg-rose-500' : 'bg-slate-100')}`}
             >
               {isSyncing ? <RefreshCw className="w-5 h-5 text-white animate-spin" /> : (syncError ? <WifiOff className="w-5 h-5 text-white" /> : <Wifi className="w-5 h-5 text-slate-400" />)}
             </div>
@@ -142,8 +143,11 @@ const App: React.FC = () => {
               <div className="flex items-center gap-1.5 mt-1">
                 {pendingCount > 0 ? (
                   <div className="flex items-center gap-1">
-                    <div className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
-                    <span className="text-[8px] font-black text-amber-500 uppercase">{pendingCount} Pendente{pendingCount > 1 ? 's' : ''}</span>
+                    <span className="relative flex h-2 w-2">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+                    </span>
+                    <span className="text-[8px] font-black text-amber-500 uppercase">{pendingCount} na fila de envio</span>
                   </div>
                 ) : (
                   <div className="flex items-center gap-1">
@@ -156,13 +160,13 @@ const App: React.FC = () => {
           </div>
           
           {userRole === 'standard' ? (
-            <button onClick={() => setShowLoginModal(true)} className="p-3 bg-slate-50 rounded-2xl text-slate-300 active:scale-95"><Lock className="w-5 h-5" /></button>
+            <button onClick={() => setShowLoginModal(true)} className="p-3 bg-slate-100 rounded-2xl text-slate-400 active:scale-95"><Lock className="w-5 h-5" /></button>
           ) : (
             <div className="flex items-center gap-2">
               <button onClick={pullFromServer} className="p-3 bg-indigo-50 text-indigo-600 rounded-2xl active:scale-90">
                 <CloudDownload className="w-5 h-5" />
               </button>
-              <div className="bg-indigo-600 px-3 py-1.5 rounded-full flex items-center gap-2 shadow-lg shadow-indigo-100">
+              <div className="bg-indigo-600 px-4 py-2 rounded-2xl flex items-center gap-2 shadow-lg shadow-indigo-100">
                 <ShieldCheck className="w-3 h-3 text-white" />
                 <span className="text-[10px] font-black text-white uppercase">Gestor</span>
               </div>
@@ -172,6 +176,16 @@ const App: React.FC = () => {
       </header>
 
       <main className="flex-grow container mx-auto p-4 max-w-2xl pb-32">
+        {!syncUrl && activeTab === 'form' && (
+          <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0" />
+            <div>
+              <p className="text-[10px] font-black text-amber-800 uppercase">Atenção!</p>
+              <p className="text-[10px] font-medium text-amber-700">O link do servidor não foi configurado. Os dados ficarão salvos apenas neste celular até que um gestor configure o link.</p>
+            </div>
+          </div>
+        )}
+
         {activeTab === 'form' && (
           <FormView 
             key={formKey} 
@@ -210,31 +224,38 @@ const App: React.FC = () => {
       </main>
 
       {userRole === 'admin' && (
-        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-white border border-slate-200 shadow-2xl rounded-full flex justify-around p-1.5 z-[60]">
-          <button onClick={() => setActiveTab('form')} className={`flex flex-col items-center gap-1 flex-1 py-3 rounded-full transition-all ${activeTab === 'form' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-400'}`}>
+        <nav className="fixed bottom-6 left-1/2 -translate-x-1/2 w-[90%] max-w-sm bg-white/80 backdrop-blur-md border border-slate-200 shadow-2xl rounded-[2.5rem] flex justify-around p-1.5 z-[60]">
+          <button onClick={() => setActiveTab('form')} className={`flex flex-col items-center gap-1 flex-1 py-4 rounded-[2rem] transition-all ${activeTab === 'form' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>
             <ClipboardList className="w-5 h-5" />
           </button>
-          <button onClick={() => setActiveTab('admin')} className={`flex flex-col items-center gap-1 flex-1 py-3 rounded-full transition-all ${activeTab === 'admin' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-400'}`}>
+          <button onClick={() => setActiveTab('admin')} className={`flex flex-col items-center gap-1 flex-1 py-4 rounded-[2rem] transition-all ${activeTab === 'admin' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>
             <LayoutDashboard className="w-5 h-5" />
           </button>
-          <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1 flex-1 py-3 rounded-full transition-all ${activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-200' : 'text-slate-400'}`}>
+          <button onClick={() => setActiveTab('settings')} className={`flex flex-col items-center gap-1 flex-1 py-4 rounded-[2rem] transition-all ${activeTab === 'settings' ? 'bg-indigo-600 text-white shadow-lg' : 'text-slate-400'}`}>
             <Settings className="w-5 h-5" />
           </button>
         </nav>
       )}
 
       {showLoginModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white w-full max-w-sm rounded-[2rem] shadow-2xl p-8">
-            <h2 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2 uppercase text-center">Gestor Frota</h2>
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-6 bg-slate-900/60 backdrop-blur-md animate-in fade-in duration-300">
+          <div className="bg-white w-full max-w-sm rounded-[3rem] shadow-2xl p-10">
+            <h2 className="text-2xl font-black text-slate-800 mb-8 flex items-center justify-center gap-2 uppercase tracking-tighter">Área do Gestor</h2>
             <form onSubmit={(e) => {
               e.preventDefault();
               if (passwordInput === '1234') { setUserRole('admin'); setShowLoginModal(false); setPasswordInput(''); }
               else { alert('Senha incorreta!'); }
             }} className="space-y-4">
-              <input type="password" placeholder="Senha" autoFocus value={passwordInput} onChange={(e) => setPasswordInput(e.target.value)} className="w-full p-4 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none font-bold text-center" />
-              <button type="submit" className="w-full py-4 bg-indigo-600 text-white font-black rounded-2xl uppercase text-[10px]">Entrar</button>
-              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-[9px] font-black text-slate-300 uppercase">Voltar</button>
+              <input 
+                type="password" 
+                placeholder="DIGITE A SENHA" 
+                autoFocus 
+                value={passwordInput} 
+                onChange={(e) => setPasswordInput(e.target.value)} 
+                className="w-full p-5 bg-slate-50 border-2 border-transparent focus:border-indigo-500 rounded-2xl outline-none font-black text-center text-lg tracking-widest" 
+              />
+              <button type="submit" className="w-full py-5 bg-indigo-600 text-white font-black rounded-2xl uppercase text-[12px] shadow-lg shadow-indigo-100">Acessar Painel</button>
+              <button type="button" onClick={() => setShowLoginModal(false)} className="w-full text-[10px] font-black text-slate-300 uppercase py-2">Voltar ao Formulário</button>
             </form>
           </div>
         </div>
