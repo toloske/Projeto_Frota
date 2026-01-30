@@ -5,7 +5,7 @@ import { SVCConfig } from './types';
  * CONFIGURAÇÃO NATIVA: 
  * Cole aqui a URL do seu Google Apps Script (terminada em /exec)
  */
-export const NATIVE_SHEET_URL = "SUA_URL_DO_GOOGLE_SCRIPT_AQUI";
+export const NATIVE_SHEET_URL = "https://script.google.com/macros/s/AKfycbzL_WICZ9EKN2nwlh5NGJqCUACeXcFN5134mxcYy-s1c8jbRWVfhXMmoBlmH3t9l8nA5A/exec";
 
 export const GLOBAL_SYNC_URL = NATIVE_SHEET_URL; 
 
