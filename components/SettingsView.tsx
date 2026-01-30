@@ -18,7 +18,10 @@ import {
   Link2,
   Zap,
   ShieldAlert,
-  AlertCircle
+  AlertCircle,
+  Copy,
+  Code,
+  Check
 } from 'lucide-react';
 
 interface Props {
@@ -33,86 +36,116 @@ interface Props {
 }
 
 export const SettingsView: React.FC<Props> = ({ 
-  svcList, onUpdate, onClearData, syncUrl, onUpdateSyncUrl, lastRawResponse 
+  svcList, onUpdate, onClearData, syncUrl, onUpdateSyncUrl 
 }) => {
   const [isPublishing, setIsPublishing] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [publishStatus, setPublishStatus] = useState<'idle' | 'success' | 'error'>('idle');
-  const [showDebug, setShowDebug] = useState(false);
+  const [showScriptModal, setShowScriptModal] = useState(false);
   const [urlInput, setUrlInput] = useState(syncUrl);
   
   const [editingSvc, setEditingSvc] = useState<SVCConfig | null>(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
 
-  const handleSaveUrl = () => {
-    onUpdateSyncUrl(urlInput);
-    alert("URL salva com sucesso!");
-  };
+  // ESTE É O CÓDIGO QUE DEVE SER COLADO NO GOOGLE APPS SCRIPT
+  const googleScriptCode = `// --- CÓDIGO PARA O GOOGLE APPS SCRIPT ---
+// 1. Abra sua Planilha
+// 2. Extensões > Apps Script
+// 3. Cole este código e salve
+// 4. Implantar > Nova Implantação > App da Web > Quem tem acesso: QUALQUER PESSOA
+
+function doPost(e) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var sheet = ss.getSheetByName("Respostas") || ss.insertSheet("Respostas");
+  
+  // Cria cabeçalhos se a planilha estiver vazia
+  if (sheet.getLastRow() === 0) {
+    sheet.appendRow([
+      "Data Registro", "ID Reporte", "Data Operacao", "SVC", 
+      "Rodando", "Parados", "SPOT Total", 
+      "SPOT Detalhes", "Ocorrencias", "Link Aceite"
+    ]);
+    sheet.getRange(1, 1, 1, 10).setFontWeight("bold").setBackground("#f3f4f6");
+  }
+
+  try {
+    var payload = JSON.parse(e.postData.contents);
+    
+    if (payload.type === 'report') {
+      var d = payload.data;
+      var spot = d.spotOffers;
+      var totalSpot = (spot.bulkVan || 0) + (spot.bulkVuc || 0) + (spot.utilitarios || 0) + 
+                      (spot.van || 0) + (spot.veiculoPasseio || 0) + (spot.vuc || 0);
+      
+      var row = [
+        new Date(),
+        d.id,
+        d.date,
+        d.svc,
+        d.fleetStatus.filter(function(v){return v.running}).length,
+        d.fleetStatus.filter(function(v){return !v.running}).length,
+        totalSpot,
+        JSON.stringify(spot),
+        d.problems.description || "Nenhuma",
+        d.weeklyAcceptance ? "Possui imagem" : "Não enviado"
+      ];
+      
+      sheet.appendRow(row);
+      return ContentService.createTextOutput("Sucesso").setMimeType(ContentService.MimeType.TEXT);
+    }
+
+    if (payload.type === 'config_update') {
+      var configSheet = ss.getSheetByName("Configuracao") || ss.insertSheet("Configuracao");
+      configSheet.clear();
+      configSheet.getRange(1, 1).setValue(JSON.stringify(payload.data));
+      return ContentService.createTextOutput("Config Atualizada").setMimeType(ContentService.MimeType.TEXT);
+    }
+    
+  } catch (err) {
+    return ContentService.createTextOutput("Erro: " + err.message).setMimeType(ContentService.MimeType.TEXT);
+  }
+}
+
+function doGet(e) {
+  if (e.parameter.action === 'ping') return ContentService.createTextOutput("PONG");
+  return ContentService.createTextOutput("Servidor Ativo").setMimeType(ContentService.MimeType.TEXT);
+}`;
 
   const testConnection = async () => {
-    // Verifica se a URL é a do placeholder
     if (!urlInput || urlInput.includes("SUA_URL_DO_GOOGLE")) {
-      return alert("ERRO: Você ainda não configurou o seu link do Google no arquivo constants.ts.");
+      return alert("ERRO: Cole a URL da sua planilha no arquivo constants.ts antes de testar.");
     }
 
     setIsTesting(true);
     try {
-      // Usamos mode 'no-cors' para o teste de ping básico também, 
-      // pois o Google Script redireciona e isso causa erros de CORS no fetch padrão.
-      const controller = new AbortController();
-      const id = setTimeout(() => controller.abort(), 10000);
-
-      await fetch(`${urlInput}${urlInput.includes('?') ? '&' : '?'}action=ping&t=${Date.now()}`, {
-        mode: 'no-cors',
-        signal: controller.signal
+      // Usamos no-cors pois o Google Script redireciona e o navegador bloqueia a leitura do 'PONG'
+      // Mas se o fetch não cair no 'catch', significa que o servidor respondeu (mesmo que opacamente)
+      await fetch(`${urlInput}${urlInput.includes('?') ? '&' : '?'}action=ping`, {
+        mode: 'no-cors'
       });
-      
-      clearTimeout(id);
-      
-      // Se o fetch no-cors não deu erro de rede (catch), 
-      // significa que o servidor está lá e aceitou a requisição.
-      alert("✅ SERVIDOR ALCANÇADO!\n\nO app conseguiu disparar um sinal para o link configurado. Se os dados não aparecerem na planilha, verifique se você publicou o script como 'Qualquer pessoa'.");
+      alert("✅ COMUNICAÇÃO DISPARADA!\n\nO sinal foi enviado com sucesso. Se os dados não aparecerem na planilha, certifique-se de que colou o código do botão 'Ver Código Google' na planilha e implantou como 'Qualquer pessoa'.");
     } catch (e) {
-      alert("❌ ERRO DE CONEXÃO:\n\nNão foi possível alcançar o link. Verifique se a URL está correta e se o script do Google está publicado.");
+      alert("❌ ERRO DE REDE:\n\nVerifique se o link está correto ou se você tem conexão com a internet.");
     } finally {
       setIsTesting(false);
     }
   };
 
   const publishConfigToCloud = async () => {
-    if (!syncUrl || syncUrl.length < 20 || syncUrl.includes("SUA_URL_DO_GOOGLE")) {
-      alert("Link do servidor não configurado corretamente no código.");
-      return;
-    }
-
+    if (!syncUrl || syncUrl.includes("SUA_URL_DO_GOOGLE")) return;
     setIsPublishing(true);
-    setPublishStatus('idle');
-
     try {
       await fetch(syncUrl, {
         method: 'POST',
         mode: 'no-cors',
-        headers: { 'Content-Type': 'text/plain' },
-        body: JSON.stringify({
-          type: 'config_update',
-          data: svcList
-        })
+        body: JSON.stringify({ type: 'config_update', data: svcList })
       });
-      
       setPublishStatus('success');
-      setTimeout(() => setPublishStatus('idle'), 4000);
+      setTimeout(() => setPublishStatus('idle'), 3000);
     } catch (e) {
       setPublishStatus('error');
     } finally {
       setIsPublishing(false);
-    }
-  };
-
-  const clearConfigCache = () => {
-    if (confirm('Resetar placas para o padrão de fábrica?')) {
-      localStorage.removeItem('fleet_svc_config');
-      localStorage.removeItem('fleet_config_source');
-      window.location.reload();
     }
   };
 
@@ -128,92 +161,86 @@ export const SettingsView: React.FC<Props> = ({
     setEditingSvc(null);
   };
 
-  const isUsingDefaultUrl = urlInput.includes("SUA_URL_DO_GOOGLE");
+  const isUrlValid = syncUrl.startsWith('https://script.google.com/macros/s/') && syncUrl.endsWith('/exec');
 
   return (
     <div className="space-y-6 pb-32">
+      {/* STATUS DO SERVIDOR */}
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-4">
-        <div className="flex items-center gap-3 mb-2">
-          <Link2 className="w-6 h-6 text-indigo-600" />
-          <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Status do Servidor</h2>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <Link2 className="w-6 h-6 text-indigo-600" />
+            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Conexão Sheets</h2>
+          </div>
+          {isUrlValid && <div className="bg-emerald-100 text-emerald-600 p-1.5 rounded-full"><Check className="w-4 h-4" /></div>}
         </div>
         
-        {isUsingDefaultUrl ? (
+        {!isUrlValid ? (
           <div className="p-5 bg-rose-50 rounded-2xl flex items-start gap-3 border border-rose-100">
             <AlertCircle className="w-5 h-5 text-rose-500 shrink-0" />
             <div>
-              <p className="text-[10px] font-black text-rose-800 uppercase leading-none mb-1">Link não configurado</p>
-              <p className="text-[10px] font-bold text-rose-600 leading-tight">Você precisa abrir o arquivo <span className="underline">constants.ts</span> e colar o link do seu Google Script lá.</p>
+              <p className="text-[10px] font-black text-rose-800 uppercase mb-1">Atenção ao Link</p>
+              <p className="text-[10px] font-bold text-rose-600 leading-tight">O link deve começar com <span className="underline">https://script.google.com...</span> e terminar com <span className="underline">/exec</span>.</p>
             </div>
           </div>
         ) : (
-          <div className="p-4 bg-indigo-50 rounded-2xl flex items-start gap-3">
+          <div className="p-4 bg-indigo-50 rounded-2xl flex items-start gap-3 border border-indigo-100">
             <ShieldAlert className="w-5 h-5 text-indigo-600 shrink-0" />
-            <div>
-              <p className="text-[10px] font-black text-indigo-800 uppercase">Configuração Ativa</p>
-              <p className="text-[10px] font-bold text-indigo-600 break-all">{syncUrl}</p>
+            <div className="overflow-hidden">
+              <p className="text-[10px] font-black text-indigo-800 uppercase">Servidor Configurado</p>
+              <p className="text-[9px] font-bold text-indigo-400 truncate">{syncUrl}</p>
             </div>
           </div>
         )}
 
-        <div className="space-y-3">
-          <div className="flex gap-2">
-            <button 
-              onClick={testConnection}
-              disabled={isTesting}
-              className={`flex-1 py-4 rounded-2xl font-black uppercase text-[10px] active:scale-95 transition-all flex items-center justify-center gap-2 ${isUsingDefaultUrl ? 'bg-slate-100 text-slate-400' : 'bg-emerald-50 text-emerald-600'}`}
-            >
-              {isTesting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-              Testar Conexão
-            </button>
-          </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button 
+            onClick={testConnection}
+            disabled={isTesting}
+            className="py-4 bg-emerald-50 text-emerald-600 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 active:scale-95 transition-all"
+          >
+            {isTesting ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+            Testar Sinal
+          </button>
+          <button 
+            onClick={() => setShowScriptModal(true)}
+            className="py-4 bg-indigo-50 text-indigo-600 rounded-2xl font-black uppercase text-[10px] flex items-center justify-center gap-2 active:scale-95 transition-all"
+          >
+            <Code className="w-4 h-4" />
+            Ver Código Google
+          </button>
         </div>
       </div>
 
+      {/* SINCRONIZAÇÃO DA FROTA */}
       <div className="bg-indigo-600 text-white p-8 rounded-[2.5rem] shadow-xl space-y-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Globe className="w-6 h-6 text-indigo-200" />
-            <h2 className="text-xl font-black uppercase tracking-tight">Gestão Global</h2>
-          </div>
-          <button onClick={() => setShowDebug(!showDebug)} className="p-2 bg-white/10 rounded-xl">
-            {showDebug ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-          </button>
+        <div className="flex items-center gap-3">
+          <Globe className="w-6 h-6 text-indigo-200" />
+          <h2 className="text-xl font-black uppercase tracking-tight">Frota na Nuvem</h2>
         </div>
-        
-        {showDebug && (
-          <div className="bg-slate-900/50 p-4 rounded-2xl font-mono text-[8px] text-indigo-200 overflow-x-auto border border-white/10 animate-in fade-in zoom-in duration-300">
-            <div className="flex items-center gap-2 mb-2 border-b border-white/10 pb-2">
-              <Terminal className="w-3 h-3" />
-              <span>Diagnóstico do Sistema</span>
-            </div>
-            <pre className="whitespace-pre-wrap">
-              Link: {syncUrl}{"\n"}
-              Placas Local: {svcList.length}{"\n"}
-              Status: {isPublishing ? 'Enviando...' : 'Pronto'}
-            </pre>
-          </div>
-        )}
-
+        <p className="text-[10px] font-medium text-indigo-100 opacity-80 leading-relaxed">
+          Se você alterou as placas abaixo, clique aqui para enviar a nova lista para os celulares de toda a equipe.
+        </p>
         <button 
           onClick={publishConfigToCloud}
-          disabled={isPublishing || isUsingDefaultUrl}
-          className={`w-full py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 transition-all ${publishStatus === 'success' ? 'bg-emerald-500 text-white' : (publishStatus === 'error' ? 'bg-rose-500 text-white' : 'bg-white text-indigo-600 shadow-lg active:scale-95 disabled:opacity-50 disabled:active:scale-100')}`}
+          disabled={isPublishing || !isUrlValid}
+          className={`w-full py-5 rounded-2xl font-black uppercase text-[10px] tracking-widest flex items-center justify-center gap-3 transition-all ${publishStatus === 'success' ? 'bg-emerald-500 text-white' : (publishStatus === 'error' ? 'bg-rose-500 text-white' : 'bg-white text-indigo-600 shadow-lg active:scale-95 disabled:opacity-50')}`}
         >
-          {isPublishing ? <RefreshCw className="w-5 h-5 animate-spin" /> : publishStatus === 'success' ? <><CheckCircle className="w-5 h-5" /> Publicado!</> : <><CloudUpload className="w-5 h-5" /> Publicar para Celulares</>}
+          {isPublishing ? <RefreshCw className="w-5 h-5 animate-spin" /> : publishStatus === 'success' ? <><CheckCircle className="w-5 h-5" /> Enviado!</> : <><CloudUpload className="w-5 h-5" /> Publicar Placas</>}
         </button>
       </div>
 
+      {/* LISTA DE PLACAS LOCAIS */}
       <div className="bg-white p-8 rounded-[2.5rem] border border-slate-100 shadow-sm space-y-6">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <Truck className="w-6 h-6 text-indigo-600" />
-            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Placas e SVCs</h2>
+            <h2 className="text-xl font-black text-slate-800 uppercase tracking-tight">Gerenciar SVCs</h2>
           </div>
-          <button onClick={() => { setEditingSvc({ id: '', name: '', vehicles: [] }); setIsAddingNew(true); }} className="p-2 text-indigo-600"><PlusCircle className="w-8 h-8" /></button>
+          <button onClick={() => { setEditingSvc({ id: '', name: '', vehicles: [] }); setIsAddingNew(true); }} className="p-2 text-indigo-600 bg-indigo-50 rounded-xl"><PlusCircle className="w-8 h-8" /></button>
         </div>
 
-        <div className="space-y-3 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+        <div className="space-y-3 max-h-[300px] overflow-y-auto pr-2 custom-scrollbar">
           {svcList.map(s => (
             <div key={s.id} className="flex items-center justify-between p-4 bg-slate-50 rounded-2xl border border-slate-100">
               <div className="flex flex-col">
@@ -226,35 +253,82 @@ export const SettingsView: React.FC<Props> = ({
         </div>
       </div>
 
-      <button onClick={clearConfigCache} className="w-full py-4 bg-slate-200 text-slate-500 rounded-2xl font-black uppercase text-[9px] flex items-center justify-center gap-2"><DatabaseZap className="w-4 h-4" /> Resetar para Lista Padrão</button>
+      {/* MODAL DO SCRIPT */}
+      {showScriptModal && (
+        <div className="fixed inset-0 z-[200] bg-slate-900/95 backdrop-blur-xl flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-[3rem] shadow-2xl flex flex-col max-h-[90%] overflow-hidden">
+            <div className="p-8 border-b flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="text-xl font-black text-slate-800 uppercase">Ativar Planilha</h3>
+                <p className="text-[10px] font-bold text-slate-400 uppercase mt-1">Siga rigorosamente estes passos</p>
+              </div>
+              <button onClick={() => setShowScriptModal(false)} className="p-2 bg-white rounded-xl shadow-sm"><X className="w-6 h-6 text-slate-300" /></button>
+            </div>
+            
+            <div className="p-8 overflow-y-auto space-y-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black mb-2">1</span>
+                  <p className="text-[11px] font-bold text-slate-600">No Google Sheets, vá em <b>Extensões > Apps Script</b>.</p>
+                </div>
+                <div className="p-4 bg-indigo-50 rounded-2xl border border-indigo-100">
+                  <span className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black mb-2">2</span>
+                  <p className="text-[11px] font-bold text-slate-600">Apague tudo e cole o código abaixo.</p>
+                </div>
+              </div>
 
+              <div className="relative">
+                <pre className="bg-slate-900 text-indigo-300 p-6 rounded-3xl font-mono text-[9px] overflow-x-auto border-2 border-indigo-500/20 max-h-[250px]">
+                  {googleScriptCode}
+                </pre>
+                <button 
+                  onClick={() => { navigator.clipboard.writeText(googleScriptCode); alert("Código copiado!"); }}
+                  className="absolute top-4 right-4 bg-indigo-600 text-white px-4 py-2 rounded-xl shadow-lg active:scale-90 transition-all flex items-center gap-2 text-[10px] font-black uppercase"
+                >
+                  <Copy className="w-3 h-3" /> Copiar
+                </button>
+              </div>
+
+              <div className="bg-amber-50 p-6 rounded-3xl border border-amber-100 space-y-3">
+                <p className="text-xs font-black text-amber-800 uppercase">Passo Final Crucial:</p>
+                <ul className="text-[11px] font-bold text-amber-900 list-disc pl-4 space-y-1">
+                  <li>Clique em <b>Implantar > Nova Implantação</b>.</li>
+                  <li>Selecione <b>App da Web</b>.</li>
+                  <li>Em "Quem tem acesso", escolha <b>QUALQUER PESSOA</b>.</li>
+                  <li>Copie o link final e cole no arquivo <code className="bg-amber-100 px-1">constants.ts</code>.</li>
+                </ul>
+              </div>
+            </div>
+
+            <div className="p-8 bg-slate-50 border-t">
+              <button onClick={() => setShowScriptModal(false)} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs shadow-lg shadow-indigo-100">Já configurei!</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL DE EDIÇÃO DE SVC (Simplificado) */}
       {editingSvc && (
         <div className="fixed inset-0 z-[110] bg-slate-900/80 backdrop-blur-md flex items-center justify-center p-6">
-          <div className="bg-white w-full max-w-md rounded-[2.5rem] flex flex-col max-h-[90%] overflow-hidden shadow-2xl">
+          <div className="bg-white w-full max-w-md rounded-[2.5rem] flex flex-col max-h-[90%] overflow-hidden">
             <div className="p-8 border-b flex justify-between items-center bg-slate-50">
               <h3 className="text-xl font-black text-slate-800 uppercase">{isAddingNew ? 'Novo SVC' : 'Editar'}</h3>
               <button onClick={() => setEditingSvc(null)} className="p-2 bg-white rounded-xl"><X className="w-6 h-6 text-slate-300" /></button>
             </div>
             <div className="p-8 space-y-6 overflow-y-auto flex-1">
-              <div>
-                <label className="text-[9px] font-black text-slate-400 uppercase mb-2 block">Nome do SVC</label>
-                <input type="text" value={editingSvc.name} onChange={e => setEditingSvc({...editingSvc, name: e.target.value.toUpperCase()})} className="w-full p-4 bg-slate-50 rounded-2xl font-black border-2 border-transparent focus:border-indigo-500 outline-none" placeholder="Ex: SSP99" />
-              </div>
+              <input type="text" value={editingSvc.name} onChange={e => setEditingSvc({...editingSvc, name: e.target.value.toUpperCase()})} className="w-full p-4 bg-slate-50 rounded-2xl font-black border-2 border-transparent focus:border-indigo-500 outline-none" placeholder="NOME DO SVC (EX: SSP9)" />
               <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-black text-slate-400 uppercase">Lista de Placas</span>
-                  <button onClick={() => setEditingSvc({...editingSvc, vehicles: [...editingSvc.vehicles, {plate: '', category: 'Veículo Operacional'}]})} className="text-indigo-600 font-black text-[10px] uppercase bg-indigo-50 px-3 py-1.5 rounded-lg">+ Placa</button>
-                </div>
+                <button onClick={() => setEditingSvc({...editingSvc, vehicles: [...editingSvc.vehicles, {plate: '', category: 'Veículo Operacional'}]})} className="w-full py-3 border-2 border-dashed border-slate-200 text-slate-400 font-black uppercase text-[10px] rounded-xl">+ Adicionar Placa</button>
                 {editingSvc.vehicles.map((v, i) => (
-                  <div key={i} className="flex gap-2 animate-in slide-in-from-right-2 duration-200">
-                    <input type="text" value={v.plate} onChange={e => { const v2 = [...editingSvc.vehicles]; v2[i].plate = e.target.value.toUpperCase(); setEditingSvc({...editingSvc, vehicles: v2}) }} className="flex-1 p-4 bg-slate-50 rounded-xl font-mono font-bold border-2 border-transparent focus:border-indigo-200 outline-none" placeholder="ABC1D23" />
-                    <button onClick={() => { const v2 = [...editingSvc.vehicles]; v2.splice(i, 1); setEditingSvc({...editingSvc, vehicles: v2}) }} className="p-4 bg-rose-50 text-rose-500 rounded-xl"><Trash2 className="w-4 h-4" /></button>
+                  <div key={i} className="flex gap-2">
+                    <input type="text" value={v.plate} onChange={e => { const v2 = [...editingSvc.vehicles]; v2[i].plate = e.target.value.toUpperCase(); setEditingSvc({...editingSvc, vehicles: v2}) }} className="flex-1 p-3 bg-slate-50 rounded-xl font-mono font-bold outline-none" placeholder="PLACA" />
+                    <button onClick={() => { const v2 = [...editingSvc.vehicles]; v2.splice(i, 1); setEditingSvc({...editingSvc, vehicles: v2}) }} className="p-3 bg-rose-50 text-rose-500 rounded-xl"><Trash2 className="w-4 h-4" /></button>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="p-8 bg-white border-t">
-               <button onClick={saveSvcChanges} className="w-full py-5 bg-indigo-600 text-white rounded-[1.5rem] font-black uppercase text-[11px] shadow-lg shadow-indigo-200 active:scale-95 transition-all">Salvar Localmente</button>
+            <div className="p-8 border-t">
+               <button onClick={saveSvcChanges} className="w-full py-5 bg-indigo-600 text-white rounded-2xl font-black uppercase text-xs">Salvar Localmente</button>
             </div>
           </div>
         </div>
